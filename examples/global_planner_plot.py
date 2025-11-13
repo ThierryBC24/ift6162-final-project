@@ -18,7 +18,7 @@ cfg = RegionConfig(
 env = ChartEnvironment(cfg)
 planner = GlobalPlanner(env)
 
-lat_start, lon_start = 43.05, 16.25
+lat_start, lon_start = 43.05, 16.40
 lat_goal,  lon_goal  = 43.45, 16.45
 
 start_xy = env.to_local(lat_start, lon_start)

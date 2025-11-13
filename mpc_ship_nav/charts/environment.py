@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Tuple, Optional
 import matplotlib.axes
 import numpy as np
-from shapely.geometry import Polygon, Point, shape, box
+from shapely.geometry import Polygon, Point, LineString, shape, box
 from shapely.ops import transform, unary_union
 from pyproj import CRS, Transformer
 import fiona
@@ -112,6 +112,13 @@ class ChartEnvironment:
         if self.land_geometry.contains(pt):
             return -float(d)
         return float(d)
+    
+    def line_intersects_land(self, x1, y1, x2, y2) -> bool:
+        """
+        True if the straight segment (x1, y1)→(x2, y2) intersects land geometry.
+        """
+        seg = LineString([(x1, y1), (x2, y2)])
+        return seg.intersects(self.land_geometry)
 
     # ---------- internal helpers ----------
 
