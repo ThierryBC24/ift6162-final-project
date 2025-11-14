@@ -66,14 +66,9 @@ class ChartEnvironment:
         if self.land_geometry.is_empty:
             return
         geom = self.land_geometry
-        try:
-            xs, ys = geom.exterior.xy
-            ax.fill(xs, ys, alpha=0.3, color="grey", label="land")
-        except Exception:
-            # multipolygon case – keep it simple for now
-            for g in geom.geoms:
-                xs, ys = g.exterior.xy
-                ax.fill(xs, ys, alpha=0.3, color="grey")
+        for g in geom.geoms:
+            xs, ys = g.exterior.xy
+            ax.fill(xs, ys, alpha=0.3, color="grey")
     # ---------- coordinate transforms ----------
 
     def to_local(self, lat: float, lon: float) -> Tuple[float, float]:
@@ -172,8 +167,6 @@ class ChartEnvironment:
         land_polys_local = []
 
         with fiona.open(coast_path, "r") as src:
-            # If file CRS is not WGS84, you *could* reproject here, but for now
-            # assume it's EPSG:4326 (lon/lat).
             for feat in src:
                 geom = shape(feat["geometry"])  # shapely geometry in lon/lat
                 if not geom.is_valid or geom.is_empty:

@@ -133,27 +133,48 @@ class GlobalPlanner:
 
     def _a_star(self, start: GridIndex, goal: GridIndex) -> List[GridIndex]:
         """
-        Simple 8-connected A* on the occupancy grid.
+        Standard A* search on the grid.
+        Returns a list of grid indices from start to goal, or [] if no path.
         """
         open_set = []
         heapq.heappush(open_set, (0.0, start))
-        came_from = {start: None}
-        g_score = {start: 0.0}
 
+        parent = {start: start} # parent / predecessor map
+        g_score = {start: 0.0} # cost so far from start
+        closed = set() # already processed nodes
+
+        # While there are still nodes to process
         while open_set:
+            # Pop best candidate
             _, current = heapq.heappop(open_set)
-            if current == goal:
-                return self._reconstruct_path(came_from, current)
 
+            # If already processed, skip
+            if current in closed:
+                continue
+            closed.add(current)
+
+            # If goal, return path
+            if current == goal:
+                return self._reconstruct_path(parent, current)
+
+            # Explore 8-connected neighbors
             for nb in self._neighbors(current):
+                if nb in closed:
+                    continue
+
+                # Movement cost from current to nb
                 tentative_g = g_score[current] + self._dist(current, nb)
+
+                # If better, update
                 if tentative_g < g_score.get(nb, float("inf")):
-                    came_from[nb] = current
+                    parent[nb] = current
                     g_score[nb] = tentative_g
                     f = tentative_g + self._dist(nb, goal)
                     heapq.heappush(open_set, (f, nb))
 
+        # No path found
         return []
+
 
     def _theta_star(self, start: GridIndex, goal: GridIndex) -> List[GridIndex]:
         """
@@ -164,7 +185,6 @@ class GlobalPlanner:
         open_set = []
         heapq.heappush(open_set, (0.0, start))
 
-        # parent: store predecessor in the path; parent[start] = start
         parent = {start: start}
         g_score = {start: 0.0}
 
@@ -175,10 +195,6 @@ class GlobalPlanner:
                 return self._reconstruct_path(parent, s)
 
             for s_next in self._neighbors(s):
-                if s not in parent:
-                    # This shouldn't happen, but guard anyway
-                    parent[s] = s
-
                 p = parent[s]  # parent of current node
 
                 # Case 1: parent has direct line-of-sight to neighbor
@@ -203,12 +219,28 @@ class GlobalPlanner:
         return []
 
     def _reconstruct_path(self, parent, current: GridIndex) -> List[GridIndex]:
+        """
+        Reconstructs a path from a parent map.
+        Works with both:
+        - parent[start] = start (A*, Theta* convention)
+        - or parent[start] = None (if you ever use that style)
+        """
+        if current is None:
+            return []
+
         path = [current]
-        while parent[current] != current:
-            current = parent[current]
+
+        while True:
+            # Safely get parent; if missing, stop
+            p = parent.get(current)
+            if p is None or p == current:
+                break
+            current = p
             path.append(current)
+
         path.reverse()
         return path
+
 
     # ---------- post-processing ----------
 
