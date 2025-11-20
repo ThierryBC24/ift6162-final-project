@@ -32,7 +32,7 @@ class ChartEnvironment:
     def __init__(self, region_cfg: RegionConfig):
         self.region_cfg = region_cfg
 
-        # 1) Define CRS: geographic (lat/lon) + local projected (e.g. UTM / local ENU)
+        # Define CRS: geographic (lat/lon) + local projected (e.g. UTM / local ENU)
         self.crs_geo = CRS.from_epsg(4326)  # WGS84
         lat_c = 0.5 * (region_cfg.lat_min + region_cfg.lat_max)
         lon_c = 0.5 * (region_cfg.lon_min + region_cfg.lon_max)
@@ -58,9 +58,14 @@ class ChartEnvironment:
 
         print(f"[ENV] Using UTM zone {zone}{'N' if is_north else 'S'} (EPSG:{epsg_code})")
 
+        # Set origin
+        self._origin_x = 0.0
+        self._origin_y = 0.0
+        self._origin_set = False
 
-        # 2) Load coastline polygons and transform to local coordinates
+        # Load coastline polygons and transform to local coordinates
         self.land_geometry = self._load_and_prepare_land()
+
 
     def plot_base_map(self, ax: "matplotlib.axes.Axes") -> None:
         if self.land_geometry.is_empty:
@@ -69,21 +74,41 @@ class ChartEnvironment:
         for g in geom.geoms:
             xs, ys = g.exterior.xy
             ax.fill(xs, ys, alpha=0.3, color="grey")
+
     # ---------- coordinate transforms ----------
 
-    def to_local(self, lat: float, lon: float) -> Tuple[float, float]:
+    def set_origin(self, lat0: float, lon0: float) -> None:
         """
-        (lat, lon) -> (x, y) in meters in local frame.
+        Set a local origin in UTM coordinates so that all to_local / to_geo
+        calls are expressed relative to this point.
         """
-        x, y = self.transformer_to_local.transform(lon, lat)
-        return float(x), float(y)
+        x0, y0 = self.transformer_to_local.transform(lon0, lat0)
+        self._origin_x = x0
+        self._origin_y = y0
+        self._origin_set = True
 
-    def to_geo(self, x: float, y: float) -> Tuple[float, float]:
-        """
-        (x, y) in local frame -> (lat, lon).
-        """
+        # Shift existing land geometry into the new local frame
+        if self.land_geometry and not self.land_geometry.is_empty:
+            def _shift(xx, yy, zz=None):
+                return xx - self._origin_x, yy - self._origin_y
+            self.land_geometry = transform(_shift, self.land_geometry)
+
+
+    def to_local(self, lat: float, lon: float) -> tuple[float, float]:
+        """Convert (lat, lon) to local (x, y) in meters."""
+        x_utm, y_utm = self.transformer_to_local.transform(lon, lat)
+        if self._origin_set:
+            return x_utm - self._origin_x, y_utm - self._origin_y
+        return x_utm, y_utm
+
+    def to_geo(self, x: float, y: float) -> tuple[float, float]:
+        """Convert local (x, y) in meters back to (lat, lon)."""
+        if self._origin_set:
+            x = x + self._origin_x
+            y = y + self._origin_y
         lon, lat = self.transformer_to_geo.transform(x, y)
-        return float(lat), float(lon)
+        return lat, lon
+
 
     # ---------- navigability queries ----------
 
@@ -117,15 +142,11 @@ class ChartEnvironment:
 
     # ---------- internal helpers ----------
 
-    def _geom_to_local(self, geom):
-        """
-        Transform a shapely geometry from geographic (lon, lat) to local (x, y).
-        """
-        def _proj(lon, lat):
-            x, y = self.transformer_to_local.transform(lon, lat)
-            return x, y
-
-        return transform(_proj, geom)
+    def _geo_to_local(self, xx, yy, zz=None):
+        # xx,yy are lon,lat
+        lat, lon = yy, xx
+        x_loc, y_loc = self.to_local(lat, lon)
+        return x_loc, y_loc
 
 
     def _load_and_prepare_land(self) -> Polygon:
@@ -183,7 +204,7 @@ class ChartEnvironment:
                     continue
 
                 # Transform to local CRS
-                geom_local = self._geom_to_local(geom_clipped)
+                geom_local = transform(self._geo_to_local, geom)
                 land_polys_local.append(geom_local)
 
         if not land_polys_local:

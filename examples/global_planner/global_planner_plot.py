@@ -87,9 +87,7 @@ def auto_bounds(lat1, lon1, lat2, lon2):
 # ============================================================
 # 3. Build RegionConfig using auto_bounds
 # ============================================================
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
-COASTLINE_FILE = DATA_DIR / "GSHHS_h_L1.shp"
+DATA_DIR = "../../data/GSHHS_h_L1.shp"
 
 lat_min, lat_max, lon_min, lon_max = auto_bounds(
     lat_start, lon_start, lat_goal, lon_goal
@@ -102,7 +100,7 @@ cfg = RegionConfig(
     lon_max=lon_max,
     grid_resolution=300.0,
     coastal_buffer=500.0,
-    coastline_file=str(COASTLINE_FILE),
+    coastline_file=DATA_DIR,
 )
 
 
