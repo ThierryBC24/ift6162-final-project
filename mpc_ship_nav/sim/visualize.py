@@ -1,5 +1,7 @@
+import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+from matplotlib import animation
 from typing import Optional
 from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
@@ -50,3 +52,122 @@ def plot_trajectories(
     ax.set_title("Ship trajectories on chart")
 
     return ax
+
+
+def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
+    """
+    Create an animation of ship trajectories on the chart.
+
+    Parameters
+    ----------
+    env : ChartEnvironment
+        Environment with land_geometry and to_geo/to_local helpers.
+    log : SimLog
+        Simulation log with:
+          - times: list[float]
+          - own_states: list[VesselState]  (fields x,y)
+          - traffic_states: list[list[VesselState]]  (for each time step)
+    fps : int
+        Frames per second for the animation (controls playback speed).
+    save_path : str or None
+        If given, path to save the animation (e.g. 'sim.mp4').
+        If None, just display interactively.
+    """
+    # --- Precompute positions ---
+    own_x = np.array([s.x for s in log.own_states])
+    own_y = np.array([s.y for s in log.own_states])
+    n_frames = len(log.own_states)
+
+    # Handle possible 0-traffic case
+    n_traffic = len(log.traffic_states[0]) if log.traffic_states else 0
+    traffic_x = []
+    traffic_y = []
+    for v_idx in range(n_traffic):
+        traffic_x.append(np.array([step[v_idx].x for step in log.traffic_states]))
+        traffic_y.append(np.array([step[v_idx].y for step in log.traffic_states]))
+
+    # --- Figure and static background (land) ---
+    fig, ax = plt.subplots(figsize=(7, 3))
+
+    if env.land_geometry is not None and (not env.land_geometry.is_empty):
+        try:
+            # works for Polygon or MultiPolygon
+            for geom in getattr(env.land_geometry, "geoms", [env.land_geometry]):
+                xs, ys = geom.exterior.xy
+                ax.fill(xs, ys, color="lightgray", zorder=0)
+        except Exception:
+            pass
+
+    ax.set_title("Ship trajectories on chart")
+    ax.set_xlabel("x (m, local)")
+    ax.set_ylabel("y (m, local)")
+
+    # Set a reasonable view window around all trajectories
+    all_x = [*own_x]
+    all_y = [*own_y]
+    for tx in traffic_x:
+        all_x.extend(tx)
+    for ty in traffic_y:
+        all_y.extend(ty)
+    if all_x and all_y:
+        pad = 500.0  # meters
+        ax.set_xlim(min(all_x) - pad, max(all_x) + pad)
+        ax.set_ylim(min(all_y) - pad, max(all_y) + pad)
+
+    ax.set_aspect("equal", adjustable="box")
+
+    # --- Artists to animate ---
+    own_line, = ax.plot([], [], "b-", label="own ship", zorder=3)
+    own_head, = ax.plot([], [], "bo", markersize=5, zorder=4)
+
+    traffic_lines = []
+    traffic_heads = []
+    for i in range(n_traffic):
+        line, = ax.plot([], [], "--", color="orange", label="traffic 1" if i == 0 else None, zorder=2)
+        head, = ax.plot([], [], "o", color="orange", markersize=4, zorder=3)
+        traffic_lines.append(line)
+        traffic_heads.append(head)
+
+    ax.legend(loc="upper right")
+
+    # --- Init and update functions for FuncAnimation ---
+    def init():
+        own_line.set_data([], [])
+        own_head.set_data([], [])
+        for line, head in zip(traffic_lines, traffic_heads):
+            line.set_data([], [])
+            head.set_data([], [])
+        return [own_line, own_head, *traffic_lines, *traffic_heads]
+
+    def update(frame):
+        # own ship up to this frame
+        own_line.set_data(own_x[: frame + 1], own_y[: frame + 1])
+        own_head.set_data([own_x[frame]], [own_y[frame]])
+
+        # each traffic vessel
+        for i in range(n_traffic):
+            tx = traffic_x[i]
+            ty = traffic_y[i]
+            traffic_lines[i].set_data(tx[: frame + 1], ty[: frame + 1])
+            traffic_heads[i].set_data([tx[frame]], [ty[frame]])
+
+        return [own_line, own_head, *traffic_lines, *traffic_heads]
+
+    interval_ms = 1000.0 / fps
+    anim = animation.FuncAnimation(
+        fig,
+        update,
+        frames=n_frames,
+        init_func=init,
+        blit=True,
+        interval=interval_ms,
+    )
+
+    if save_path is not None:
+        # requires ffmpeg installed if saving as mp4
+        anim.save(save_path, fps=fps)
+        print(f"Animation saved to {save_path}")
+    else:
+        plt.show()
+
+    return anim

@@ -6,7 +6,7 @@ from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
 from mpc_ship_nav.dynamics.traffic import TrafficGenerator
 from mpc_ship_nav.sim.engine import Simulator, SimConfig, Controller
-from mpc_ship_nav.sim.visualize import plot_trajectories
+from mpc_ship_nav.sim.visualize import plot_trajectories, animate_trajectories
 from mpc_ship_nav.charts.planner import GlobalPlanner, PlannerConfig
 
 class WaypointController:
@@ -88,6 +88,8 @@ def main():
     ax.scatter(wx, wy, c="orange", s=15, zorder=4, label="waypoints")
     plt.show()
 
+    # Animated playback
+    animate_trajectories(env, log, fps=10, save_path="toy_scenario.mp4")
 
 if __name__ == "__main__":
     main()
