@@ -2,6 +2,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from matplotlib.patches import FancyArrowPatch 
 from typing import Optional
 from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
@@ -49,12 +50,18 @@ def plot_trajectories(
     ax.set_xlabel("x (m, local)")
     ax.set_ylabel("y (m, local)")
     ax.legend()
-    ax.set_title("Ship trajectories on chart")
+    ax.set_title("Ship trajectories")
 
     return ax
 
 
-def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
+def animate_trajectories(
+        env, 
+        log, 
+        fps: int = 10, 
+        save_path: str | None = None, 
+        bounds: tuple[float, float, float, float] | None = None
+):
     """
     Create an animation of ship trajectories on the chart.
 
@@ -76,6 +83,7 @@ def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
     # --- Precompute positions ---
     own_x = np.array([s.x for s in log.own_states])
     own_y = np.array([s.y for s in log.own_states])
+    own_psi = np.array([s.psi for s in log.own_states])
     n_frames = len(log.own_states)
 
     # Handle possible 0-traffic case
@@ -88,37 +96,44 @@ def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
 
     # --- Figure and static background (land) ---
     fig, ax = plt.subplots(figsize=(7, 3))
+    env.plot_base_map(ax)
 
-    if env.land_geometry is not None and (not env.land_geometry.is_empty):
-        try:
-            # works for Polygon or MultiPolygon
-            for geom in getattr(env.land_geometry, "geoms", [env.land_geometry]):
-                xs, ys = geom.exterior.xy
-                ax.fill(xs, ys, color="lightgray", zorder=0)
-        except Exception:
-            pass
-
-    ax.set_title("Ship trajectories on chart")
+    ax.set_title("Ship trajectories")
     ax.set_xlabel("x (m, local)")
     ax.set_ylabel("y (m, local)")
 
-    # Set a reasonable view window around all trajectories
-    all_x = [*own_x]
-    all_y = [*own_y]
-    for tx in traffic_x:
-        all_x.extend(tx)
-    for ty in traffic_y:
-        all_y.extend(ty)
-    if all_x and all_y:
-        pad = 500.0  # meters
-        ax.set_xlim(min(all_x) - pad, max(all_x) + pad)
-        ax.set_ylim(min(all_y) - pad, max(all_y) + pad)
+    # --- View window ---
+    if bounds is not None:
+        x_min, x_max, y_min, y_max = bounds
+    else:
+        all_x = [*own_x]
+        all_y = [*own_y]
+        for tx in traffic_x:
+            all_x.extend(tx)
+        for ty in traffic_y:
+            all_y.extend(ty)
 
+        pad = 500.0  # fallback when no explicit bounds
+        x_min, x_max = min(all_x) - pad, max(all_x) + pad
+        y_min, y_max = min(all_y) - pad, max(all_y) + pad
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
     ax.set_aspect("equal", adjustable="box")
 
-    # --- Artists to animate ---
+    # --- Animation ---
     own_line, = ax.plot([], [], "b-", label="own ship", zorder=3)
     own_head, = ax.plot([], [], "bo", markersize=5, zorder=4)
+    # Arrow showing own-ship heading
+    own_arrow = FancyArrowPatch(
+        (0, 0), (0, 0),
+        arrowstyle="->",
+        color="blue",
+        mutation_scale=10,
+        zorder=4,
+    )
+    ax.add_patch(own_arrow)
+
 
     traffic_lines = []
     traffic_heads = []
@@ -137,12 +152,24 @@ def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
         for line, head in zip(traffic_lines, traffic_heads):
             line.set_data([], [])
             head.set_data([], [])
-        return [own_line, own_head, *traffic_lines, *traffic_heads]
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads]
+
 
     def update(frame):
         # own ship up to this frame
         own_line.set_data(own_x[: frame + 1], own_y[: frame + 1])
         own_head.set_data([own_x[frame]], [own_y[frame]])
+
+        # update heading arrow
+        arrow_len = 2000.0  # meters
+        x = own_x[frame]
+        y = own_y[frame]
+        psi = own_psi[frame]
+
+        x2 = x + arrow_len * np.cos(psi)
+        y2 = y + arrow_len * np.sin(psi)
+        own_arrow.set_positions((x, y), (x2, y2))
+
 
         # each traffic vessel
         for i in range(n_traffic):
@@ -151,7 +178,7 @@ def animate_trajectories(env, log, fps: int = 10, save_path: str | None = None):
             traffic_lines[i].set_data(tx[: frame + 1], ty[: frame + 1])
             traffic_heads[i].set_data([tx[frame]], [ty[frame]])
 
-        return [own_line, own_head, *traffic_lines, *traffic_heads]
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads]
 
     interval_ms = 1000.0 / fps
     anim = animation.FuncAnimation(
