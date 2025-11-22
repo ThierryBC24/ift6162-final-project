@@ -8,7 +8,7 @@ D_COLREG = 3.0 # nautical miles [nm]
 
 @dataclass
 class EncouterType:
-    NONE: int = 0
+    UNDEFINED: int = 0
     OVERTAKING: int = 1
     OVERTAKEN: int = 2
     HEAD_ON: int = 3
@@ -66,8 +66,10 @@ def classify_encounter(own_ship: VesselState, target_ship: VesselState) -> int:
         return EncouterType.OVERTAKEN
     elif rel_speed > own_ship.v:
         return EncouterType.HEAD_ON
-    elif 247.5 <= rel_bearing  or rel_bearing <= 112.5:
+    elif 247.5 <= rel_bearing  or rel_bearing <= 112.5 and rel_speed > 0:
         return EncouterType.CROSSING
+    else:
+        return EncouterType.UNDEFINED
     
         
 
