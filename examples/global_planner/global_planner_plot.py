@@ -7,9 +7,15 @@ Global planner demo (paper-scale, Adriatic region).
 """
 
 from pathlib import Path
+import sys
 import math
 
 import matplotlib.pyplot as plt
+
+# Allow running the example without installing the package
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
@@ -87,7 +93,7 @@ def auto_bounds(lat1, lon1, lat2, lon2):
 # ============================================================
 # 3. Build RegionConfig using auto_bounds
 # ============================================================
-DATA_DIR = "../../data/GSHHS_h_L1.shp"
+DATA_DIR = PROJECT_ROOT / "data" / "GSHHS_h_L1.shp"
 
 lat_min, lat_max, lon_min, lon_max = auto_bounds(
     lat_start, lon_start, lat_goal, lon_goal
@@ -133,11 +139,20 @@ fig, ax = plt.subplots(figsize=(7, 7))
 
 env.plot_base_map(ax)
 
-# Plot main route polyline
-ax.plot(xs, ys, "-", color="blue", linewidth=1.5, label="planned route")
+# Plot main route polyline (darker, on top of land)
+ax.plot(xs, ys, "-", color="navy", linewidth=2.0, zorder=3, label="planned route")
 
-# Plot waypoints along the route as markers-
-ax.scatter(xs, ys, s=15, color="blue", zorder=3, label="waypoints")
+# Plot waypoints as tiny outlined markers above the line
+ax.scatter(
+    xs,
+    ys,
+    s=1.5,
+    edgecolor="skyblue",
+    facecolors="none",
+    linewidths=0.4,
+    zorder=4,
+    label="waypoints",
+)
 
 # Label a subset of waypoints (start, goal, and every 50th)
 for k, (x, y) in enumerate(route):

@@ -1,116 +1,156 @@
-from dataclasses import dataclass
-from typing import List
+"""
+COLREG compliance logic for target ships.
+
+Target ships follow these rules explicitly, while the own ship (MPC-controlled)
+avoids collisions implicitly through its optimization constraints.
+"""
+
 import numpy as np
-from .vessel import Vessel, VesselState, VesselParams
+from .vessel import Vessel
 
-D_COLLISION = 0.5 # nautical miles [nm]
-D_COLREG = 3.0 # nautical miles [nm]
+# Paper values (jmse-13-01246): dCollision=0.5 nm, dCOLREG=3.0 nm
+NM = 1852.0
+D_COLLISION = 0.5 * NM  # 926 m
+D_COLREG = 3.0 * NM     # 5556 m
 
-@dataclass
-class EncouterType:
-    UNDEFINED: int = 0
-    OVERTAKING: int = 1
-    OVERTAKEN: int = 2
-    HEAD_ON: int = 3
-    CROSSING: int = 4
-    
 
-def _compute_relative_bearing(own_ship: VesselState, target_ship: VesselState) -> float:
-    """Compute the relative bearing from own ship to target ship
-
-    Args:
-        own_ship (VesselState): the controlled ship
-        target_ship (VesselState): the encountered ship
-    Returns:
-        float: relative bearing in radians [0, 2pi)
+class COLREGLogic:
     """
-    delta_lon = target_ship.lon - own_ship.lon
-    y = np.sin(delta_lon) * np.cos(target_ship.lat)
-    x = (np.cos(own_ship.lat) * np.sin(target_ship.lat) -
-         np.sin(own_ship.lat) * np.cos(target_ship.lat) * np.cos(delta_lon))
-    true_bearing = np.arctan2(y, x) % (2 * np.pi)
-    relative_bearing = (true_bearing - own_ship.psi) % (2 * np.pi)
-    return relative_bearing
+    COLREG compliance logic for target ships (Rule 13/14/15).
 
-def _compute_relative_speed(own_ship: VesselState, target_ship: VesselState) -> float:
-    """Compute the relative speed between two vessels
-
-    Args:
-        own_ship (VesselState): the controlled ship
-        target_ship (VesselState): the encountered ship
-
-    Returns:
-        float: relative speed in knots
+    The target ship will generate a yaw rate command when it must give way;
+    otherwise it maintains course (returns 0.0).
     """
-    velocity_own = np.array([own_ship.v * np.cos(own_ship.psi), own_ship.v * np.sin(own_ship.psi)])
-    velocity_target = np.array([target_ship.v * np.cos(target_ship.psi), target_ship.v * np.sin(target_ship.psi)])
-    relative_velocity = velocity_target - velocity_own
-    relative_speed = np.linalg.norm(relative_velocity)
-    return relative_speed
 
-def classify_encounter(own_ship: VesselState, target_ship: VesselState) -> int:
-    """Classify the encounter type between two vessels based on their relative bearing
+    def __init__(self, collision_threshold: float = D_COLLISION):
+        """
+        Args:
+            collision_threshold: Distance threshold for collision risk [m]
+        """
+        self.collision_threshold = collision_threshold
 
-    Args:
-        own_ship (VesselState): the controlled ship
-        target_ship (VesselState): the encountered ship
+    def compute_target_control(self, target: Vessel, own_ship: Vessel) -> float:
+        """
+        Compute control for a target ship based on COLREG rules.
 
-    Returns:
-        int: encounter type as defined in EncouterType
-    """
-    rel_bearing = _compute_relative_bearing(own_ship, target_ship)
-    rel_speed = _compute_relative_speed(own_ship, target_ship)
-    if (292.5 < rel_bearing or rel_bearing < 67.5) and rel_speed < own_ship.v:
-        return EncouterType.OVERTAKING
-    elif 112.5 < rel_bearing < 247.5 and rel_speed > 0:
-        return EncouterType.OVERTAKEN
-    elif rel_speed > own_ship.v:
-        return EncouterType.HEAD_ON
-    elif 247.5 <= rel_bearing  or rel_bearing <= 112.5 and rel_speed > 0:
-        return EncouterType.CROSSING
-    else:
-        return EncouterType.UNDEFINED
-    
-        
+        Args:
+            target: The target ship to control
+            own_ship: The own ship (autonomous vessel)
 
-def _compute_distance(own_ship: Vessel, target_ship: Vessel) -> float:
-    """Compute the distance between two vessels in nautical miles
+        Returns:
+            u: yaw rate command [rad/s]
+        """
+        if not self._risk_of_collision(target, own_ship):
+            return 0.0
 
-    Args:
-        own_ship (Vessel): the controlled ship
-        target_ship (Vessel): the encountered ship
+        encounter = self._classify_encounter(target, own_ship)
 
-    Returns:
-        float: distance in nautical miles
-    """
-    d_lat = (target_ship.state.lat - own_ship.state.lat) * 60.0  # nm
-    d_lon = (target_ship.state.lon - own_ship.state.lon) * 60.0  # nm
-    return np.sqrt(d_lat**2 + d_lon**2)
+        if self._target_must_give_way(encounter, target, own_ship):
+            sign = self._turn_direction(encounter, target, own_ship)
+            return sign * target.params.max_yaw_rate
 
-def in_collision_zone(own_ship: Vessel, target_ship: Vessel, safety_radius: float = D_COLLISION) -> bool:
-    """Check if a ship entered the collision zone
+        return 0.0
 
-    Args:
-        own_ship (Vessel): the controlled ship
-        target_ship (Vessel): the encountered ship
-        safety_radius (float, optional): object. Defaults to 0.05.
+    def _distance(self, ship1: Vessel, ship2: Vessel) -> float:
+        """Euclidean distance between two vessels in meters."""
+        dx = ship2.state.x - ship1.state.x
+        dy = ship2.state.y - ship1.state.y
+        return np.hypot(dx, dy)
 
-    Returns:
-        bool: whether the target ship is in the collision zone
-    """
-    distance = _compute_distance(own_ship, target_ship)
-    return distance <= safety_radius
+    def _risk_of_collision(self, target: Vessel, own_ship: Vessel) -> bool:
+        """
+        Determine if there is a risk of collision.
 
-def in_colreg_zone(own_ship: Vessel, target_ship: Vessel, colreg_radius: float = D_COLREG) -> bool:
-    """Check if a ship entered the COLREG zone
+        Simple distance check plus whether the relative velocity points toward
+        the other vessel (dot product < 0).
+        """
+        distance = self._distance(target, own_ship)
+        if distance > self.collision_threshold:
+            return False
 
-    Args:
-        own_ship (Vessel): the controlled ship
-        target_ship (Vessel): the encountered ship
-        colreg_radius (float, optional): object. Defaults to 3.0.
+        dx = own_ship.state.x - target.state.x
+        dy = own_ship.state.y - target.state.y
 
-    Returns:
-        bool: whether the target ship is in the COLREG zone
-    """
-    distance = _compute_distance(own_ship, target_ship)
-    return distance <= colreg_radius
+        vx_t = target.state.v * np.cos(target.state.psi)
+        vy_t = target.state.v * np.sin(target.state.psi)
+        vx_o = own_ship.state.v * np.cos(own_ship.state.psi)
+        vy_o = own_ship.state.v * np.sin(own_ship.state.psi)
+
+        dvx = vx_o - vx_t
+        dvy = vy_o - vy_t
+
+        dot_product = dvx * dx + dvy * dy
+        return dot_product < 0
+
+    def _classify_encounter(self, target: Vessel, own_ship: Vessel) -> str:
+        """
+        Classify the type of encounter according to COLREG.
+
+        Returns:
+            'head_on', 'crossing', 'overtaking', or 'none'
+        """
+        rel_bearing = self._relative_bearing(target, own_ship)
+
+        heading_diff = abs(own_ship.state.psi - target.state.psi)
+        heading_diff = min(heading_diff, 2 * np.pi - heading_diff)
+
+        # Head-on: nearly reciprocal courses and own ship in target's forward cone
+        if heading_diff > np.radians(170) and abs(rel_bearing) < np.radians(20):
+            return "head_on"
+
+        # Overtaking: target is faster and own ship is in target's stern sector
+        rel_bearing_own = self._relative_bearing(own_ship, target)
+        if target.state.v > own_ship.state.v and abs(rel_bearing_own) > np.radians(112.5):
+            return "overtaking"
+
+        # Crossing: intersecting paths with appreciable heading difference
+        if np.radians(5) < heading_diff < np.radians(170):
+            return "crossing"
+
+        return "none"
+
+    def _target_must_give_way(self, encounter: str, target: Vessel, own_ship: Vessel) -> bool:
+        """Return True if the target ship must maneuver."""
+        if encounter == "head_on":
+            return True
+
+        if encounter == "crossing":
+            rel_bearing = self._relative_bearing(target, own_ship)
+            # Starboard side = negative (clockwise) relative bearing in our convention
+            return -np.radians(112.5) < rel_bearing <= 1e-6
+
+        if encounter == "overtaking":
+            rel_bearing_own = self._relative_bearing(own_ship, target)
+            return target.state.v > own_ship.state.v and abs(rel_bearing_own) > np.radians(112.5)
+
+        return False
+
+    def _turn_direction(self, encounter: str, target: Vessel, own_ship: Vessel) -> int:
+        """
+        Determine turn direction for avoiding action.
+
+        Returns +1 for port (left) turn, -1 for starboard (right) turn.
+        """
+        if encounter == "head_on":
+            return -1  # Rule 14: turn starboard
+
+        if encounter == "overtaking":
+            return -1  # Rule 13: overtaking vessel keeps to starboard (in this demo)
+
+        # crossing or fallback: turn away from own ship based on relative bearing
+        rel_bearing = self._relative_bearing(target, own_ship)
+        if rel_bearing >= 0:
+            return -1  # own on port side -> turn starboard
+        return +1      # own on starboard side -> turn port
+
+    def _relative_bearing(self, observer: Vessel, target: Vessel) -> float:
+        """
+        Relative bearing from observer to target in radians, normalized to [-π, π].
+        0 = dead ahead of observer; +π/2 = starboard; -π/2 = port; ±π = astern.
+        """
+        dx = target.state.x - observer.state.x
+        dy = target.state.y - observer.state.y
+
+        bearing_absolute = np.arctan2(dy, dx)
+        relative = bearing_absolute - observer.state.psi
+        return np.arctan2(np.sin(relative), np.cos(relative))

@@ -45,7 +45,8 @@ class Vessel:
         self.state.x = self.state.x + self.state.v * np.cos(self.state.psi) * dt
         self.state.y = self.state.y + self.state.v * np.sin(self.state.psi) * dt
 
-        # Update lat/lon from local x,y so everything stays consistent
-        lat, lon = chart_env.to_geo(self.state.x, self.state.y)
-        self.state.lat = lat
-        self.state.lon = lon
+        if chart_env is not None:
+            # Update lat/lon from local x,y so everything stays consistent
+            lat, lon = chart_env.to_geo(self.state.x, self.state.y)
+            self.state.lat = lat
+            self.state.lon = lon
