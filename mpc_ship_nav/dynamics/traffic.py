@@ -2,19 +2,20 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import numpy as np
 import math
-from .vessel import Vessel, VesselState, VesselParams
+from mpc_ship_nav.dynamics.vessel import Vessel, VesselState, VesselParams
+from mpc_ship_nav.charts.environment import ChartEnvironment
 
 
 R_EARTH = 3440.065  # Earth's radius in nautical miles
 
 
 class GenerateTraffic:
-    def __init__(self, own_ship: Vessel, distance: float, max_target_speed: float, epsilon: float = 1):
+    def __init__(self, own_ship: Vessel, distance: float, max_target_speed: float, epsilon: float = 1, env: ChartEnvironment = None):
         self.own_ship = own_ship # Vessel object representing the own ship
         self.mean_distance = distance # Distance from own ship to target ship in nautical miles
         self.max_target_speed = max_target_speed # Maximum speed of the target ship in m/s
         self.epsilon = epsilon # Small value that defines the range of variation when generating different encounter scenarios
-        
+        self.env = env # ChartEnvironment for navigability
         
     
     def _find_target_position(self, rel_bearing: float, distance: float) -> Tuple[float, float]:
@@ -181,35 +182,65 @@ class GenerateTraffic:
         return target_state
     
     
-    def generate_enc(self, enc_type: int = None, epsilon = None, max_iter: int = 100) -> VesselState:
+    def generate_enc(self, enc_type: int = None, epsilon=None, max_iter: int = 100) -> Tuple[int, VesselState]:
         """Generates a target ship state for a specified encounter scenario.
-        
+
         Args:
-            enc_type (int): Encounter type (1: Overtaking, 2: Overtaken, 3: Head-on, 4: Crossing).
-            epsilon (float, optional): Variation parameter. Defaults to None.
+            enc_type (int): Encounter type
+                1: Overtaking
+                2: Overtaken
+                3: Head-on
+                4: Crossing
+                5: Random
+            epsilon (float, optional): Variation parameter.
         Returns:
             Tuple[int, VesselState]:
-                int: The encounter type generated. if -1 then no valid encounter was generated within max_iter.
+                int: The encounter type generated. If -1 then no valid encounter
+                     was generated within max_iter.
                 VesselState: The state of the generated target ship.
         """
         if enc_type is None:
             enc_type = np.random.choice([1, 2, 3, 4, 5])
-        call = [self.generate_overtaking_enc, self.generate_overtaken_enc, self.generate_head_on_enc, self.generate_crossing_enc, self.generate_random]
-        if not (1 <= enc_type <= 5):
-            raise ValueError("Invalid encounter type. Must be 1 (Overtaking), 2 (Overtaken), 3 (Head-on), 4 (Crossing), or 5 (Random Scenario). \n \
-                             Note that for type 5, the generated target ship may not correspond to any specific COLREG encounter type.")
-            
-        speed = self.max_target_speed + 1
-        while speed > self.max_target_speed and max_iter > 0:
-            target_state = call[type-1](epsilon)
-            speed = target_state.v
-            max_iter -= 1
-        if max_iter == 0:
-            return -1, None
-        return enc_type, target_state
-    
-    
 
+        call = [
+            self.generate_overtaking_enc,
+            self.generate_overtaken_enc,
+            self.generate_head_on_enc,
+            self.generate_crossing_enc,
+            self.generate_random,
+        ]
+
+        if not (1 <= enc_type <= 5):
+            raise ValueError(
+                "Invalid encounter type. Must be 1 (Overtaking), 2 (Overtaken), "
+                "3 (Head-on), 4 (Crossing), or 5 (Random Scenario). "
+                "Note that for type 5, the generated target ship may not correspond "
+                "to any specific COLREG encounter type."
+            )
+
+        while max_iter > 0:
+            # sample a target
+            target_state = call[enc_type - 1](epsilon)
+            speed = target_state.v
+
+            # check speed limit
+            if speed > self.max_target_speed:
+                max_iter -= 1
+                continue
+
+            # check navigability if env is available
+            if self.env is not None:
+                x, y = self.env.to_local(target_state.lat, target_state.lon)
+                if not self.env.is_navigable(x, y):   # avoid land/buffer
+                    max_iter -= 1
+                    continue
+
+            # passed all checks
+            return enc_type, target_state
+
+        # failed to find valid target
+        return -1, None
+        
 
 @dataclass
 class Scenario:

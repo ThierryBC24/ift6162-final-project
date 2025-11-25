@@ -122,8 +122,8 @@ def animate_trajectories(
     ax.set_aspect("equal", adjustable="box")
 
     # --- Animation ---
-    own_line, = ax.plot([], [], "b-", label="own ship", zorder=3)
-    own_head, = ax.plot([], [], "bo", markersize=5, zorder=4)
+    own_line, = ax.plot([], [], "b-", label="own ship", zorder=3, linewidth=0.5)
+    own_head, = ax.plot([], [], "bo", markersize=1, zorder=4, linewidth=0.5)
     # Arrow showing own-ship heading
     own_arrow = FancyArrowPatch(
         (0, 0), (0, 0),
@@ -139,7 +139,7 @@ def animate_trajectories(
     traffic_heads = []
     for i in range(n_traffic):
         line, = ax.plot([], [], "--", color="orange", label="traffic 1" if i == 0 else None, zorder=2)
-        head, = ax.plot([], [], "o", color="orange", markersize=4, zorder=3)
+        head, = ax.plot([], [], "o", color="orange", markersize=1, zorder=3)
         traffic_lines.append(line)
         traffic_heads.append(head)
 

@@ -95,6 +95,27 @@ class Simulator:
 
             # --- advance other vessels (simple kinematics, no control) ---
             for v in self.other_vessels:
+                # Save previous position before stepping
+                prev_x, prev_y = v.state.x, v.state.y
+                prev_psi = v.state.psi
+
+                # Move ship forward with constant heading + speed
                 v.step(0.0, dt, chart_env=self.env)
+
+                # If new position is NOT navigable → bounce away from land
+                if not self.env.is_navigable(v.state.x, v.state.y):
+                    # revert to previous position
+                    v.state.x = prev_x
+                    v.state.y = prev_y
+                    v.state.psi = (prev_psi + np.pi) % (2 * np.pi)   # 180° turn
+
+                    # move one step in reversed direction
+                    v.state.x += v.state.v * np.cos(v.state.psi) * dt
+                    v.state.y += v.state.v * np.sin(v.state.psi) * dt
+
+                    # update lat/lon so the simulator remains consistent
+                    lat, lon = self.env.to_geo(v.state.x, v.state.y)
+                    v.state.lat = lat
+                    v.state.lon = lon
 
         return log
