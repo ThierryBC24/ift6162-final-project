@@ -103,9 +103,10 @@ def auto_bounds(lat1, lon1, lat2, lon2):
 
     return lat_min, lat_max, lon_min, lon_max
 
-
+from pathlib import Path
+FILE_PATH = Path(__file__).resolve()
 def main():
-    DATA_DIR = "../../data/GSHHS_h_L1.shp"
+    DATA_DIR = FILE_PATH.parent.parent.parent / "data" / "GSHHS_h_L1.shp"
 
     # Start / goal taken from the original script
     lat_start, lon_start = 43.45491, 15.97686
@@ -219,7 +220,7 @@ def main():
         env,
         log,
         fps=10,
-        save_path="toy_scenario.mp4",
+        save_path=FILE_PATH.parent / "toy_scenario.mp4",
         bounds=bounds,
     )
 

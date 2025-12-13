@@ -3,7 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.patches import FancyArrowPatch 
-from typing import Optional
+from typing import Optional, List
 from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
 from mpc_ship_nav.dynamics.traffic import TrafficGenerator
@@ -56,8 +56,8 @@ def plot_trajectories(
 
 
 def animate_trajectories(
-        env, 
-        log, 
+        env : ChartEnvironment, 
+        log: SimLog, 
         fps: int = 10, 
         save_path: str | None = None, 
         bounds: tuple[float, float, float, float] | None = None
@@ -135,11 +135,22 @@ def animate_trajectories(
     ax.add_patch(own_arrow)
 
 
-    traffic_lines = []
-    traffic_heads = []
+    traffic_lines : List[plt.Line2D] = []
+    traffic_heads : List[plt.Line2D] = []
+    traffic_arrows : List[FancyArrowPatch] = []
     for i in range(n_traffic):
         line, = ax.plot([], [], "--", color="orange", label="traffic 1" if i == 0 else None, zorder=2)
-        head, = ax.plot([], [], "o", color="orange", markersize=1, zorder=3)
+        head, = ax.plot([], [], "bo", color="orange", markersize=1, zorder=3)
+        traffic_arrow = FancyArrowPatch(
+            (50, 0), (0, 0),
+            arrowstyle="->",
+            color="orange",
+            mutation_scale=10,
+            zorder=4,
+        )
+        ax.add_patch(traffic_arrow)
+        traffic_arrows.append(traffic_arrow)
+        
         traffic_lines.append(line)
         traffic_heads.append(head)
 
@@ -168,7 +179,29 @@ def animate_trajectories(
 
         x2 = x + arrow_len * np.cos(psi)
         y2 = y + arrow_len * np.sin(psi)
+        
         own_arrow.set_positions((x, y), (x2, y2))
+
+        for i in range(n_traffic):
+            # update heading arrow for traffic vessel
+            tx = traffic_x[i]
+            ty = traffic_y[i]
+
+            # approximate heading using last two positions
+            if frame == 0:
+                psi_t = 0.0
+            else:
+                dx = tx[frame] - tx[frame - 1]
+                dy = ty[frame] - ty[frame - 1]
+                psi_t = np.arctan2(dy, dx)
+
+            x_t = tx[frame]
+            y_t = ty[frame]
+
+            x2_t = x_t + arrow_len * np.cos(psi_t)
+            y2_t = y_t + arrow_len * np.sin(psi_t)
+
+            traffic_arrows[i].set_positions((x_t, y_t), (x2_t, y2_t))
 
 
         # each traffic vessel
