@@ -99,7 +99,11 @@ class Simulator:
                 prev_x, prev_y = v.state.x, v.state.y
                 prev_psi = v.state.psi
 
-                # Move ship forward with constant heading + speed
+                if np.random.random() < 0.5:
+                    turn_angle = np.random.uniform(-np.radians(2), np.radians(2))  # Allow ±45-degree turns
+                    v.state.psi = (v.state.psi + turn_angle) % (2 * np.pi)
+
+                # Move ship forward
                 v.step(0.0, dt, chart_env=self.env)
 
                 # If new position is NOT navigable → bounce away from land
