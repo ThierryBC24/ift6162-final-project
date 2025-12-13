@@ -87,8 +87,9 @@ def auto_bounds(lat1, lon1, lat2, lon2):
 
     return lat_min, lat_max, lon_min, lon_max
 
+FILE_PATH = Path(__file__).resolve()
 def main():
-    DATA_DIR = "../../data/GSHHS_h_L1.shp"
+    DATA_DIR =  FILE_PATH.parent.parent.parent / "data" / "GSHHS_h_L1.shp"
 
     lat_start, lon_start = 43.45491, 15.97686
     lat_goal,  lon_goal  = 43.09396, 17.16086
@@ -155,7 +156,7 @@ def main():
     x_min, x_max = min(x1, x2), max(x1, x2)
     y_min, y_max = min(y1, y2), max(y1, y2)
     bounds = (x_min, x_max, y_min, y_max)
-    animate_trajectories(env, log, fps=10, save_path="toy_scenario.mp4", bounds=bounds)
+    animate_trajectories(env, log, fps=10, save_path= FILE_PATH.parent / "toy_scenario.mp4", bounds=bounds)
 
 if __name__ == "__main__":
     main()

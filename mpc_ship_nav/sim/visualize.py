@@ -175,7 +175,7 @@ def animate_trajectories(
         for i in range(n_traffic):
             tx = traffic_x[i]
             ty = traffic_y[i]
-            traffic_lines[i].set_data(tx[: frame + 1], ty[: frame + 1])
+            traffic_lines[i].set_data(tx[max(0, frame - 20): frame + 1], ty[max(0, frame - 20): frame + 1])
             traffic_heads[i].set_data([tx[frame]], [ty[frame]])
 
         return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads]
