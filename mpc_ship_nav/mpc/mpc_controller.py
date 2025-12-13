@@ -42,21 +42,21 @@ class MPCConfig:
         return self.colreg_radius_nm * 1852.0
 
 
-@dataclass
 class WaypointRoute:
     """Waypoint manager in LOCAL (x,y) coordinates."""
-    waypoints_xy: np.ndarray           # shape (N, 2)
-    transition_radius: float           # when closer than this, advance to next
-    idx: int = 0                       # current waypoint index
+    def __init__(self, waypoints_xy: np.ndarray, transition_radius: float):
+        self.waypoints_xy = waypoints_xy  # List of waypoints in (x, y)
+        self.transition_radius = transition_radius  # When within this radius, move to next waypoint
+        self.idx = 0  # Index of the current waypoint
 
     def current_waypoint(self, own: VesselState) -> Tuple[float, float]:
-        """Return active waypoint and advance when inside transition radius."""
+        """Return the current waypoint and advance when inside transition radius."""
         n = len(self.waypoints_xy)
         if n == 0:
-            # degenerate case: no waypoints
+            # If no waypoints, return current position
             return own.x, own.y
 
-        # clamp index
+        # Clamp index to ensure it doesn't go out of bounds
         if self.idx >= n:
             self.idx = n - 1
 
@@ -66,6 +66,7 @@ class WaypointRoute:
         dist = math.hypot(dx, dy)
 
         if dist <= self.transition_radius and self.idx < n - 1:
+            # If close enough, advance to next waypoint
             self.idx += 1
             wp_x, wp_y = self.waypoints_xy[self.idx]
 
@@ -78,10 +79,10 @@ class WaypointRoute:
 class SimplifiedMPCController(Controller):
     """
     Simplified fan-based MPC controller as in Sec. 2.6.3:
-    - generate M constant-turn trajectories over H steps,
-    - discard those that violate d_collision to static/dynamic obstacles,
-    - select trajectory based on heading/endpoint relative to next waypoint,
-    - apply only first control input (receding horizon).
+    - Generate M constant-turn trajectories over H steps.
+    - Discard those that violate d_collision to static/dynamic obstacles.
+    - Select trajectory based on heading/endpoint relative to next waypoint.
+    - Apply only first control input (receding horizon).
     """
 
     def __init__(self, dt: float, waypoints_xy: np.ndarray) -> None:
@@ -90,10 +91,6 @@ class SimplifiedMPCController(Controller):
             waypoints_xy=np.asarray(waypoints_xy, dtype=float),
             transition_radius=self.cfg.collision_radius,
         )
-
-    # ------------------------------------------------------------------
-    # Controller interface
-    # ------------------------------------------------------------------
 
     def compute_control(
         self,
@@ -108,19 +105,19 @@ class SimplifiedMPCController(Controller):
         if own.x is None or own.y is None:
             own.x, own.y = env.to_local(own.lat, own.lon)
 
-        # --- 1) Get current waypoint in local coords, possibly advance ---
+        # 1) Get the current waypoint in local coords, possibly advance
         wp_x, wp_y = self.route.current_waypoint(own)
 
-        # If we are basically at the last waypoint, just go straight
+        # If we are at the last waypoint, just go straight
         if self.route.is_finished():
             return 0.0
 
-        # --- 2) Bearing to waypoint (target heading) ---
+        # 2) Calculate bearing to waypoint (target heading)
         dx = wp_x - own.x
         dy = wp_y - own.y
         theta_target = math.atan2(dy, dx)
 
-        # --- 3) Collect dynamic obstacles within COLREG zone ---
+        # 3) Collect dynamic obstacles within COLREG zone
         dyn_states: List[VesselState] = []
         for v in other_vessels:
             s = v.state
@@ -132,33 +129,26 @@ class SimplifiedMPCController(Controller):
             if ddx * ddx + ddy * ddy <= self.cfg.colreg_radius ** 2:
                 dyn_states.append(s)
 
-        # --- 4) Static obstacles (if env exposes a helper) ---
-        # For now, we don't have a ready-made distance field, so we skip static
-        # collision checks in this minimal version. They can be added as:
-        #   static_xy = env.get_static_points_near(own.x, own.y, self.cfg.colreg_radius)
-        # and then included in the feasibility test.
-        static_xy = np.empty((0, 2))
-
-        # --- 5) Precompute predicted dynamic trajectories (constant velocity) ---
+        # 4) Precompute predicted dynamic trajectories (constant velocity)
         dyn_trajs = self._predict_dynamic(dyn_states)
 
-        # --- 6) Generate candidate yaw-rates and simulate own trajectories ---
+        # 5) Generate candidate yaw-rates and simulate own trajectories
         u_candidates = np.linspace(
             -self.cfg.max_yaw_rate, self.cfg.max_yaw_rate, self.cfg.n_candidates
         )
         feasible_mask, own_trajs = self._simulate_and_filter(
-            own, u_candidates, dyn_trajs, static_xy
+            own, u_candidates, dyn_trajs, static_xy=np.empty((0, 2))  # Empty static obstacles array
         )
 
         if not np.any(feasible_mask):
             # fallback: simple proportional heading correction toward waypoint
             angle_err = self._wrap_angle(theta_target - own.psi)
             u_fallback = np.clip(angle_err / self.cfg.dt,
-                                 -self.cfg.max_yaw_rate,
-                                 self.cfg.max_yaw_rate)
+                                -self.cfg.max_yaw_rate,
+                                self.cfg.max_yaw_rate)
             return float(u_fallback)
 
-        # --- 7) Select best feasible candidate ---
+        # 6) Select the best feasible candidate
         idx = self._select_best(
             own,
             (wp_x, wp_y),
@@ -169,6 +159,11 @@ class SimplifiedMPCController(Controller):
         )
 
         return float(u_candidates[idx])
+
+    @staticmethod
+    def _wrap_angle(a: float) -> float:
+        return (a + math.pi) % (2 * math.pi) - math.pi
+
 
     # ------------------------------------------------------------------
     # MPC internals

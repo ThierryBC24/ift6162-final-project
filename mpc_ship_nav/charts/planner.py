@@ -57,6 +57,36 @@ class GlobalPlanner:
         path_xy = self._resample_path(path_xy, self.cfg.max_waypoint_spacing)
 
         return path_xy
+    
+    def plan_multi(self, waypoints: List[Coord]) -> List[Coord]:
+        """
+        Compute a multi-waypoint route, avoiding land/coastal buffer. This method computes
+        the route between each consecutive pair of waypoints in the provided list.
+
+        Args:
+            waypoints: List of (x, y) coordinates representing the waypoints.
+
+        Returns:
+            A list of (x, y) coordinates representing the full path through all waypoints.
+        """
+        full_path = []
+
+        for i in range(len(waypoints) - 1):
+            start_xy = waypoints[i]
+            goal_xy = waypoints[i + 1]
+
+            # Plan the route between the start and goal
+            path_xy = self.plan(start_xy, goal_xy)
+
+            # Append the path from the current waypoint to the next
+            if full_path:
+                # Avoid duplicating the starting point of the next segment
+                full_path.extend(path_xy[1:])
+            else:
+                full_path.extend(path_xy)
+
+        return full_path
+
 
     # ---------- grid definition ----------
 

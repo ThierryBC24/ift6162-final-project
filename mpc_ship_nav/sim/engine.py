@@ -52,11 +52,11 @@ class Simulator:
         self.own_ship: Vessel = scenario.own_ship
         self.other_vessels: List[Vessel] = list(scenario.other_vessels)
 
-        # Make sure x,y are set in local frame at t=0
+        # Make sure x, y are set in local frame at t=0
         self._sync_local_coords()
 
     def _sync_local_coords(self) -> None:
-        """Ensure all vessels have x,y in local coordinates."""
+        """Ensure all vessels have x, y in local coordinates."""
         for v in [self.own_ship] + self.other_vessels:
             if v.state.x is None or v.state.y is None:
                 x, y = self.env.to_local(v.state.lat, v.state.lon)
@@ -119,3 +119,4 @@ class Simulator:
                     v.state.lon = lon
 
         return log
+
