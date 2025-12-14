@@ -103,9 +103,10 @@ def auto_bounds(lat1, lon1, lat2, lon2):
 
     return lat_min, lat_max, lon_min, lon_max
 
-
+from pathlib import Path
+file_path = Path(__file__).resolve()
 def main():
-    DATA_DIR = "../../data/GSHHS_h_L1.shp"
+    DATA_DIR = file_path.parent.parent.parent / "data" / "GSHHS_h_L1.shp"
 
     # Define the waypoints as provided
     waypoints = [
@@ -225,6 +226,7 @@ def main():
     animate_trajectories(
         env,
         log,
+        route,
         fps=10,
         save_path="toy_scenario.gif",
         bounds=bounds,

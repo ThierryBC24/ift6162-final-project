@@ -156,7 +156,7 @@ def main():
     x_min, x_max = min(x1, x2), max(x1, x2)
     y_min, y_max = min(y1, y2), max(y1, y2)
     bounds = (x_min, x_max, y_min, y_max)
-    animate_trajectories(env, log, fps=10, save_path= FILE_PATH.parent / "toy_scenario.mp4", bounds=bounds)
+    animate_trajectories(env, log, waypoints, fps=10, save_path= FILE_PATH.parent / "toy_scenario.mp4", bounds=bounds)
 
 if __name__ == "__main__":
     main()

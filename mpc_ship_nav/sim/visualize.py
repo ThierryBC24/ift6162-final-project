@@ -3,12 +3,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.patches import FancyArrowPatch 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
 from mpc_ship_nav.dynamics.traffic import TrafficGenerator
 from mpc_ship_nav.sim.engine import Simulator, SimConfig, SimLog
 from mpc_ship_nav.sim.sim_possible_traj import SimulateHypotheticalTraj
+from mpc_ship_nav.charts.planner import Coord 
 
 
 class DummyHeadingController:
@@ -59,6 +60,7 @@ def plot_trajectories(
 def animate_trajectories(
         env : ChartEnvironment, 
         log: SimLog, 
+        waypoints: List[Coord],
         fps: int = 10, 
         save_path: str | None = None, 
         bounds: tuple[float, float, float, float] | None = None
@@ -82,6 +84,8 @@ def animate_trajectories(
         If None, just display interactively.
     """
     # --- Precompute positions ---
+    waypoints_x, waypoints_y = zip(*waypoints)
+    
     own_x = np.array([s.x for s in log.own_states])
     own_y = np.array([s.y for s in log.own_states])
     own_psi = np.array([s.psi for s in log.own_states])
@@ -129,6 +133,8 @@ def animate_trajectories(
     ax.set_aspect("equal", adjustable="box")
 
     # --- Animation ---
+    waypoints_line, = ax.plot(waypoints_x, waypoints_y, "-", color="grey", label="waypoints", zorder=5)
+    
     own_line, = ax.plot([], [], "b-", label="own ship", zorder=3, linewidth=0.5)
     own_head, = ax.plot([], [], "bo", markersize=1, zorder=4, linewidth=0.5)
     # Arrow showing own-ship heading
@@ -169,6 +175,7 @@ def animate_trajectories(
 
     # --- Init and update functions for FuncAnimation ---
     def init():
+        waypoints_line.set_data(waypoints_x, waypoints_y)
         own_line.set_data([], [])
         own_head.set_data([], [])
         for line, head in zip(traffic_lines, traffic_heads):

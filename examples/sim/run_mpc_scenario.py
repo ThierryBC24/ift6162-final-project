@@ -219,6 +219,7 @@ def main():
     animate_trajectories(
         env,
         log,
+        waypoints,
         fps=10,
         save_path=FILE_PATH.parent / "toy_scenario.mp4",
         bounds=bounds,
