@@ -85,6 +85,11 @@ def animate_trajectories(
     """
     # --- Precompute positions ---
     waypoints_x, waypoints_y = zip(*waypoints)
+    min_x, max_x = min(waypoints_x), max(waypoints_x)
+    min_y, max_y = min(waypoints_y), max(waypoints_y)
+    padding = 10000.0  # meters
+    bounds = (min_x - padding, max_x + padding, min_y - padding, max_y + padding)
+    
     
     own_x = np.array([s.x for s in log.own_states])
     own_y = np.array([s.y for s in log.own_states])
@@ -92,7 +97,7 @@ def animate_trajectories(
     n_frames = len(log.own_states)
     print(f"Animating {n_frames} frames at {fps} fps...")
 
-    own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log)
+    own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log, dump_zone=300, scale=100)
     hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
     hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
     num_trajectories = len(hypothetical_trajectories[0])
@@ -106,7 +111,7 @@ def animate_trajectories(
         traffic_y.append(np.array([step[v_idx].y for step in log.traffic_states]))
 
     # --- Figure and static background (land) ---
-    fig, ax = plt.subplots(figsize=(7, 3))
+    fig, ax = plt.subplots(figsize=(10, 10))
     env.plot_base_map(ax)
 
     ax.set_title("Ship trajectories")

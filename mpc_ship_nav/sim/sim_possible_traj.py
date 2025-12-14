@@ -11,7 +11,7 @@ import math
 class StaticTrajectoryGenrator:
     """Generates a set of static trajectories based max yaw rate, horizon and number of trajectories."""
     
-    def __init__(self, max_yaw_rate: float=np.radians(20), horizon: int=20, num_trajectories: int=45, decay_factor: float=0.95):
+    def __init__(self, max_yaw_rate: float=np.radians(20), horizon: int=20, num_trajectories: int=45, decay_factor: float=0.95, scale: int=300):
         """
         Args:
             max_yaw_rate (float, optional): the maximum yaw rate in radians per second. Defaults to np.radians(20).
@@ -23,7 +23,7 @@ class StaticTrajectoryGenrator:
         self.horizon = horizon
         self.num_trajectories = num_trajectories
         self.decay_factor = decay_factor
-        self.scale = 300  # control applied every 1000 steps
+        self.scale = scale  # control applied every 1000 steps
         self.trajectories = self.generate_trajectories()
         
         
@@ -52,13 +52,13 @@ class StaticTrajectoryGenrator:
 class SimulateHypotheticalTraj:
     """Class to simulate possible trajectories for analysis purposes."""
     
-    def __init__(self, env: ChartEnvironment, simLog: SimLog, horizon: int=20, max_yaw_rate: float=np.radians(20), number_of_trajectories: int=45, decay_factor: float=0.95, dump_zone:int = 300, sim_config: SimConfig=SimConfig()):
+    def __init__(self, env: ChartEnvironment, simLog: SimLog, horizon: int=20, max_yaw_rate: float=np.radians(20), number_of_trajectories: int=45, decay_factor: float=0.95, scale: int=300, dump_zone:int = 300, sim_config: SimConfig=SimConfig()):
         self.env = env
         self.own_ship_states = simLog.own_states
         self.traffic_states = simLog.traffic_states
         self.vessel_params = VesselParams(max_yaw_rate=max_yaw_rate)
         self.plot_dt = simLog.times[1] - simLog.times[0]
-        self.trajectories_generator = StaticTrajectoryGenrator(max_yaw_rate=max_yaw_rate, horizon=horizon, num_trajectories=number_of_trajectories, decay_factor=decay_factor)
+        self.trajectories_generator = StaticTrajectoryGenrator(max_yaw_rate=max_yaw_rate, horizon=horizon, num_trajectories=number_of_trajectories, decay_factor=decay_factor, scale=scale)
         self.sim_config = sim_config
         self.dump_zone = dump_zone
         

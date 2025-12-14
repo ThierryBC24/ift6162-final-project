@@ -173,7 +173,7 @@ def main():
         lat_max=lat_max,
         lon_min=lon_min,
         lon_max=lon_max,
-        n_vessels=60,  # tweak as you like
+        n_vessels=100,  # tweak as you like
     )
     other_vessels.extend(background_vessels)
 
@@ -228,7 +228,7 @@ def main():
         log,
         route,
         fps=10,
-        save_path="toy_scenario.gif",
+        save_path= file_path.parent / "toy_scenario.gif",
         bounds=bounds,
     )
 
