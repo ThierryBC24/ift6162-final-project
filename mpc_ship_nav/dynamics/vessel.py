@@ -14,6 +14,16 @@ class VesselState:
     v: float  # speed [m/s]
     x: Optional[float] = None
     y: Optional[float] = None
+    
+    def copy(self) -> "VesselState":
+        return VesselState(
+            lat=self.lat,
+            lon=self.lon,
+            psi=self.psi,
+            v=self.v,
+            x=self.x,
+            y=self.y,
+        )
 
 
 @dataclass
@@ -50,3 +60,7 @@ class Vessel:
             lat, lon = chart_env.to_geo(self.state.x, self.state.y)
             self.state.lat = lat
             self.state.lon = lon
+
+    def get_position(self) -> tuple[float, float]:
+        """Get current (x, y) position in local coordinates."""
+        return self.state.x, self.state.y

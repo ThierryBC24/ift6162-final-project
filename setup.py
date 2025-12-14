@@ -10,5 +10,6 @@ setup(
         "pyproj",
         "matplotlib",
         "fiona",
+        "tqdm",
     ]
 )

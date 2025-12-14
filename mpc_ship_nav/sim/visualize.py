@@ -8,6 +8,7 @@ from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
 from mpc_ship_nav.dynamics.traffic import TrafficGenerator
 from mpc_ship_nav.sim.engine import Simulator, SimConfig, SimLog
+from mpc_ship_nav.sim.sim_possible_traj import SimulateHypotheticalTraj
 
 
 class DummyHeadingController:
@@ -85,7 +86,13 @@ def animate_trajectories(
     own_y = np.array([s.y for s in log.own_states])
     own_psi = np.array([s.psi for s in log.own_states])
     n_frames = len(log.own_states)
+    print(f"Animating {n_frames} frames at {fps} fps...")
 
+    own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log)
+    hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
+    hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
+    num_trajectories = len(hypothetical_trajectories[0])
+    
     # Handle possible 0-traffic case
     n_traffic = len(log.traffic_states[0]) if log.traffic_states else 0
     traffic_x = []
@@ -154,6 +161,10 @@ def animate_trajectories(
         traffic_lines.append(line)
         traffic_heads.append(head)
 
+    hypothetical_lines : List[plt.Line2D] = []
+    for traj_idx in range(num_trajectories):
+        line, = ax.plot([], [], "-", color='red',zorder=5, alpha=0.3)
+        hypothetical_lines.append(line)
     ax.legend(loc="upper right")
 
     # --- Init and update functions for FuncAnimation ---
@@ -163,7 +174,9 @@ def animate_trajectories(
         for line, head in zip(traffic_lines, traffic_heads):
             line.set_data([], [])
             head.set_data([], [])
-        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads]
+        for line in hypothetical_lines:
+            line.set_data([], [])
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *hypothetical_lines]
 
 
     def update(frame):
@@ -210,8 +223,16 @@ def animate_trajectories(
             ty = traffic_y[i]
             traffic_lines[i].set_data(tx[max(0, frame - 20): frame + 1], ty[max(0, frame - 20): frame + 1])
             traffic_heads[i].set_data([tx[frame]], [ty[frame]])
+        
+        trjectories = hypothetical_trajectories[frame]
+        for traj_idx in range(num_trajectories):
+            traj_x, traj_y = trjectories[traj_idx]
+            color = hypothetical_colors[frame][traj_idx]
+            hypothetical_lines[traj_idx].set_data(traj_x, traj_y)
+            hypothetical_lines[traj_idx].set_color(color)
 
-        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads]
+
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *hypothetical_lines]
 
     interval_ms = 1000.0 / fps
     anim = animation.FuncAnimation(
