@@ -5,6 +5,7 @@ import numpy as np
 from ..charts.environment import ChartEnvironment
 from ..dynamics.traffic import Scenario
 from ..dynamics.vessel import Vessel, VesselState
+from mpc_ship_nav.dynamics import COLREGLogic, D_COLLISION
 
 
 class Controller(Protocol):
@@ -48,6 +49,7 @@ class Simulator:
         self.scenario = scenario
         self.controller = controller
         self.cfg = config
+        self.colreg = COLREGLogic(collision_threshold=D_COLLISION)
 
         self.own_ship: Vessel = scenario.own_ship
         self.other_vessels: List[Vessel] = list(scenario.other_vessels)
@@ -99,12 +101,9 @@ class Simulator:
                 prev_x, prev_y = v.state.x, v.state.y
                 prev_psi = v.state.psi
 
-                if np.random.random() < 0.5:
-                    turn_angle = np.random.uniform(-np.radians(2), np.radians(2))  # Allow ±45-degree turns
-                    v.state.psi = (v.state.psi + turn_angle) % (2 * np.pi)
-
                 # Move ship forward
-                v.step(0.0, dt, chart_env=self.env)
+                u_traf = self.colreg.compute_target_control(v, self.own_ship)
+                v.step(u_traf, dt, chart_env=self.env)
 
                 # If new position is NOT navigable → bounce away from land
                 if not self.env.is_navigable(v.state.x, v.state.y):
