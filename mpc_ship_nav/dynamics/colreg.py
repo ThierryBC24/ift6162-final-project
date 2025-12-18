@@ -22,12 +22,15 @@ class COLREGLogic:
     otherwise it maintains course (returns 0.0).
     """
 
-    def __init__(self, collision_threshold: float = D_COLLISION):
+    def __init__(self, collision_threshold: float = D_COLREG):
         """
         Args:
             collision_threshold: Distance threshold for collision risk [m]
         """
         self.collision_threshold = collision_threshold
+        # Track original heading for overtaking encounters (per vessel)
+        # Key: vessel id, Value: original heading when overtaking started
+        self._overtaking_original_headings: dict = {}
 
     def compute_target_control(self, target: Vessel, own_ship: Vessel) -> float:
         """
@@ -40,12 +43,43 @@ class COLREGLogic:
         Returns:
             u: yaw rate command [rad/s]
         """
-        if not self._risk_of_collision(target, own_ship):
+        target_id = id(target)
+        distance = self._distance(target, own_ship)
+        in_colreg_radius = distance <= self.collision_threshold
+        risk_of_collision = self._risk_of_collision(target, own_ship) if in_colreg_radius else False
+
+        # Check if we're returning to original heading after overtaking
+        if target_id in self._overtaking_original_headings:
+            if not in_colreg_radius:
+                # Other ship is out of COLREG radius, return to original heading
+                original_heading = self._overtaking_original_headings[target_id]
+                current_heading = target.state.psi
+                
+                # Calculate heading error (normalized to [-π, π])
+                heading_error = self._wrap_angle(current_heading - original_heading)
+                
+                # If we're close enough to original heading, clear the tracking
+                if abs(heading_error) < np.radians(5.0):
+                    del self._overtaking_original_headings[target_id]
+                    return 0.0
+                
+                # Turn towards original heading (opposite direction of error)
+                if heading_error > 0:
+                    return -target.params.max_yaw_rate  # Turn starboard (right)
+                else:
+                    return target.params.max_yaw_rate  # Turn port (left)
+            # If still in COLREG radius, continue with normal COLREG logic below
+
+        if not risk_of_collision:
             return 0.0
 
         encounter = self._classify_encounter(target, own_ship)
 
         if self._target_must_give_way(encounter, target, own_ship):
+            # For overtaking encounters, store original heading if not already stored
+            if encounter == "overtaking" and target_id not in self._overtaking_original_headings:
+                self._overtaking_original_headings[target_id] = target.state.psi
+            
             sign = self._turn_direction(encounter, target, own_ship)
             return sign * target.params.max_yaw_rate
 
@@ -137,11 +171,10 @@ class COLREGLogic:
         if encounter == "overtaking":
             return -1  # Rule 13: overtaking vessel keeps to starboard (in this demo)
 
-        # crossing or fallback: turn away from own ship based on relative bearing
-        rel_bearing = self._relative_bearing(target, own_ship)
-        if rel_bearing >= 0:
-            return -1  # own on port side -> turn starboard
-        return +1      # own on starboard side -> turn port
+        # crossing: COLREG Rule 15 - give-way vessel turns starboard (right)
+        # When traffic must give way (determined by _target_must_give_way), it should turn starboard
+        # This function is only called when traffic must give way, so always turn starboard
+        return -1  # starboard (right) turn per COLREG Rule 15
 
     def _relative_bearing(self, observer: Vessel, target: Vessel) -> float:
         """
@@ -154,3 +187,8 @@ class COLREGLogic:
         bearing_absolute = np.arctan2(dy, dx)
         relative = bearing_absolute - observer.state.psi
         return np.arctan2(np.sin(relative), np.cos(relative))
+
+    @staticmethod
+    def _wrap_angle(angle: float) -> float:
+        """Wrap angle to [-π, π]."""
+        return np.arctan2(np.sin(angle), np.cos(angle))

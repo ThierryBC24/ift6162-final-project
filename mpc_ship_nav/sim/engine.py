@@ -49,7 +49,7 @@ class Simulator:
         self.scenario = scenario
         self.controller = controller
         self.cfg = config
-        self.colreg = COLREGLogic(collision_threshold=D_COLLISION)
+        self.colreg = COLREGLogic()
 
         self.own_ship: Vessel = scenario.own_ship
         self.other_vessels: List[Vessel] = list(scenario.other_vessels)
@@ -70,6 +70,10 @@ class Simulator:
         log = SimLog()
         dt = self.cfg.dt
         n_steps = int(self.cfg.t_final / dt)
+
+        # Check if controller has a route attribute (for SimplifiedMPCController)
+        has_route = hasattr(self.controller, 'route')
+        route = getattr(self.controller, 'route', None) if has_route else None
 
         for k in range(n_steps + 1):
             t = k * dt
@@ -95,6 +99,11 @@ class Simulator:
             # --- advance own ship ---
             self.own_ship.step(u, dt, chart_env=self.env)
 
+            # Check if route is finished (at last waypoint)
+            if has_route:
+                if route.is_finished():
+                    break
+
             # --- advance other vessels (simple kinematics, no control) ---
             for v in self.other_vessels:
                 # Save previous position before stepping
@@ -103,6 +112,7 @@ class Simulator:
 
                 # Move ship forward
                 u_traf = self.colreg.compute_target_control(v, self.own_ship)
+
                 v.step(u_traf, dt, chart_env=self.env)
 
                 # If new position is NOT navigable → bounce away from land

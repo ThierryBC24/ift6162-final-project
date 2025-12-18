@@ -22,39 +22,57 @@ def plot_trajectories(
     env: ChartEnvironment,
     log: SimLog,
     ax: Optional[plt.Axes] = None,
+    bounds: Optional[Tuple[float, float, float, float]] = None,
+    pad: float = 500.0,
 ):
-    """Plot own ship + traffic trajectories on the chart."""
     if ax is None:
         fig, ax = plt.subplots(figsize=(7, 7))
 
-    # Base map (land)
     env.plot_base_map(ax)
 
-    # Own ship trajectory
     own_x = [s.x for s in log.own_states if s.x is not None]
     own_y = [s.y for s in log.own_states if s.y is not None]
     ax.plot(own_x, own_y, "-o", ms=2, label="own ship")
 
-    # Traffic trajectories
+    all_x = list(own_x)
+    all_y = list(own_y)
+
     if log.traffic_states:
         n_traffic = len(log.traffic_states[0])
         for idx in range(n_traffic):
-            xs = []
-            ys = []
+            xs, ys = [], []
             for step_states in log.traffic_states:
                 s = step_states[idx]
                 if s.x is not None and s.y is not None:
-                    xs.append(s.x)
-                    ys.append(s.y)
+                    xs.append(s.x); ys.append(s.y)
             ax.plot(xs, ys, "--", label=f"traffic {idx+1}")
+            all_x.extend(xs); all_y.extend(ys)
+
+    # --- bounds handling ---
+    if bounds is None:
+        # Prefer region corners if present (keeps map + traj consistent)
+        cfg = getattr(env, "cfg", None) or getattr(env, "config", None)
+        if cfg is not None and all(hasattr(cfg, k) for k in ["lat_min", "lat_max", "lon_min", "lon_max"]):
+            x1, y1 = env.to_local(cfg.lat_min, cfg.lon_min)
+            x2, y2 = env.to_local(cfg.lat_max, cfg.lon_max)
+            x_min, x_max = min(x1, x2), max(x1, x2)
+            y_min, y_max = min(y1, y2), max(y1, y2)
+        else:
+            x_min, x_max = min(all_x) - pad, max(all_x) + pad
+            y_min, y_max = min(all_y) - pad, max(all_y) + pad
+    else:
+        x_min, x_max, y_min, y_max = bounds
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
     ax.set_aspect("equal", "box")
     ax.set_xlabel("x (m, local)")
     ax.set_ylabel("y (m, local)")
     ax.legend()
     ax.set_title("Ship trajectories")
-
     return ax
+
 
 
 def animate_trajectories(
@@ -111,7 +129,7 @@ def animate_trajectories(
         traffic_y.append(np.array([step[v_idx].y for step in log.traffic_states]))
 
     # --- Figure and static background (land) ---
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
     env.plot_base_map(ax)
 
     ax.set_title("Ship trajectories")
@@ -157,7 +175,7 @@ def animate_trajectories(
     traffic_heads : List[plt.Line2D] = []
     traffic_arrows : List[FancyArrowPatch] = []
     for i in range(n_traffic):
-        line, = ax.plot([], [], "--", color="orange", label="traffic 1" if i == 0 else None, zorder=2)
+        line, = ax.plot([], [], "--", color="orange", label=f"traffic {i+1}", zorder=2)
         head, = ax.plot([], [], "bo", color="orange", markersize=1, zorder=3)
         traffic_arrow = FancyArrowPatch(
             (50, 0), (0, 0),
@@ -188,7 +206,7 @@ def animate_trajectories(
             head.set_data([], [])
         for line in hypothetical_lines:
             line.set_data([], [])
-        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *hypothetical_lines]
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *traffic_arrows, *hypothetical_lines]
 
 
     def update(frame):
@@ -233,7 +251,7 @@ def animate_trajectories(
         for i in range(n_traffic):
             tx = traffic_x[i]
             ty = traffic_y[i]
-            traffic_lines[i].set_data(tx[max(0, frame - 20): frame + 1], ty[max(0, frame - 20): frame + 1])
+            traffic_lines[i].set_data(tx[max(0, frame - 5): frame + 1], ty[max(0, frame - 5): frame + 1])
             traffic_heads[i].set_data([tx[frame]], [ty[frame]])
         
         trjectories = hypothetical_trajectories[frame]
@@ -244,7 +262,7 @@ def animate_trajectories(
             hypothetical_lines[traj_idx].set_color(color)
 
 
-        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *hypothetical_lines]
+        return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *traffic_arrows, *hypothetical_lines]
 
     interval_ms = 1000.0 / fps
     anim = animation.FuncAnimation(
@@ -258,7 +276,7 @@ def animate_trajectories(
 
     if save_path is not None:
         # requires ffmpeg installed if saving as mp4
-        anim.save(save_path, fps=fps)
+        anim.save(save_path, dpi=150,fps=fps)
         print(f"Animation saved to {save_path}")
     else:
         plt.show()

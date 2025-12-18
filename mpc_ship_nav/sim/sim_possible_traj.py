@@ -136,8 +136,9 @@ class SimulateHypotheticalTraj:
                 if dist < self.dump_zone:
                     return 'red'  # Collision with another vessel
                 
-                ship.x += ship.v * math.cos(0) * self.plot_dt
-                ship.y += ship.v * math.sin(0) * self.plot_dt
+                # Update traffic ship position using its actual heading (psi)
+                ship.x += ship.v * math.cos(ship.psi) * self.plot_dt
+                ship.y += ship.v * math.sin(ship.psi) * self.plot_dt
         return 'green'  # Safe trajectory
     
     def color_all_trajectories_by_risk(self) -> List[List[str]]:
