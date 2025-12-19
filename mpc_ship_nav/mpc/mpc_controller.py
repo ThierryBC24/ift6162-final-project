@@ -47,7 +47,7 @@ class WaypointRoute:
     def __init__(self, waypoints_xy: np.ndarray, transition_radius: float):
         self.waypoints_xy = waypoints_xy  # List of waypoints in (x, y)
         self.transition_radius = transition_radius  # When within this radius, move to next waypoint
-        self.idx = 0  # Index of the current waypoint
+        self.idx = 0  
 
     def current_waypoint(self, own: VesselState) -> Tuple[float, float]:
         """Return the current waypoint and advance when inside transition radius."""
@@ -56,7 +56,6 @@ class WaypointRoute:
             # If no waypoints, return current position
             return own.x, own.y
 
-        # Clamp index to ensure it doesn't go out of bounds
         if self.idx >= n:
             self.idx = n - 1
 
@@ -95,7 +94,6 @@ class StaticControlSeqGenrator:
         
     def generate_controls(self) -> np.ndarray[np.ndarray[np.float64]]:
         initial_angles = np.linspace(-self.max_yaw_rate, self.max_yaw_rate, self.num_trajectories)
-        # Initialize the control matrix
         controls = np.zeros((self.num_trajectories, self.horizon), dtype=np.float64)
         print("Generating trajectories with control shape:")
         print(controls.shape)
@@ -105,11 +103,9 @@ class StaticControlSeqGenrator:
             dtheta = start_angle
 
             for h in range(self.horizon):
-                # Store current control
                 controls[i, h] = dtheta
 
                 # Apply decay for the next step (smoothing)
-                # This corresponds to: dtheta = dtheta * .95
                 dtheta *= self.decay_factor
         return controls 
 
@@ -139,16 +135,14 @@ class SimplifiedMPCController(Controller):
         other_vessels: List[Vessel],
         env: ChartEnvironment,
     ) -> Tuple[Tuple[float, int], Tuple[np.ndarray, np.ndarray]]:
-        own = own_ship.state  # VesselState
+        own = own_ship.state  
 
-        # Ensure we have local coordinates
         if own.x is None or own.y is None:
             own.x, own.y = env.to_local(own.lat, own.lon)
 
         # 1) Get the current waypoint in local coords, possibly advance
         wp_x, wp_y = self.route.current_waypoint(own)
 
-        # If we are at the last waypoint, just go straight
         if self.route.is_finished():
             # Return 0.0 yaw rate, index 0, and empty debug info to satisfy unpacking in engine.py
             return ((0.0, 0), (np.array([]), np.array([])))
@@ -196,7 +190,7 @@ class SimplifiedMPCController(Controller):
             u_candidates,
             own_trajs,
             feasible_mask,
-            dyn_states=dyn_states,  # Pass dynamic states for COLREG detection
+            dyn_states=dyn_states,  
         )
 
         return (float(u_candidates[idx]), idx), (feasible_mask, own_trajs_vis)
@@ -322,7 +316,6 @@ class SimplifiedMPCController(Controller):
 
         idxs = np.where(feasible_mask)[0]
         if idxs.size == 0:
-            # Shouldn't happen if feasible_mask ensured, but be safe.
             return int(np.argmin(np.isfinite(feasible_mask)))
 
         # -----------------------------
@@ -344,9 +337,7 @@ class SimplifiedMPCController(Controller):
             # Equation (16): minimize |θ_m(1) - θ_Target|
             for m in idxs:
                 u = float(u_candidates[m])
-                # heading after first step
                 psi1 = self._wrap_angle(own.psi + u * dt)
-                # minimize heading error
                 score = ang_diff(theta_target, psi1)
 
                 if score < best_score:
@@ -361,7 +352,6 @@ class SimplifiedMPCController(Controller):
 
             for m in idxs:
                 end_x, end_y = own_trajs[m, H - 1]
-                # minimize endpoint distance to waypoint
                 score = math.hypot(end_x - wp_x, end_y - wp_y)
 
                 if score < best_score:

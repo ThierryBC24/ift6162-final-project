@@ -103,10 +103,8 @@ class SimplifiedMPC:
         traj_psi[:, 0] = own.psi
 
         for h in range(H):
-            # update heading
             traj_psi[:, h + 1] = self._wrap(traj_psi[:, h] + u_candidates * cfg.dt)
 
-            # then integrate position with new heading
             traj_x[:, h + 1] = traj_x[:, h] + own.v * np.cos(traj_psi[:, h + 1]) * cfg.dt
             traj_y[:, h + 1] = traj_y[:, h] + own.v * np.sin(traj_psi[:, h + 1]) * cfg.dt
 

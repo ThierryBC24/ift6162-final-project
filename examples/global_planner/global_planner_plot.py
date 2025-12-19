@@ -139,7 +139,6 @@ fig, ax = plt.subplots(figsize=(7, 7))
 
 env.plot_base_map(ax)
 
-# Plot main route polyline (darker, on top of land)
 ax.plot(xs, ys, "-", color="navy", linewidth=2.0, zorder=3, label="planned route")
 
 # Plot waypoints as tiny outlined markers above the line

@@ -57,7 +57,6 @@ class Simulator:
         self.own_ship: Vessel = scenario.own_ship
         self.other_vessels: List[Vessel] = list(scenario.other_vessels)
 
-        # Make sure x, y are set in local frame at t=0
         self._sync_local_coords()
 
     def _sync_local_coords(self) -> None:
@@ -74,7 +73,6 @@ class Simulator:
         dt = self.cfg.dt
         n_steps = int(self.cfg.t_final / dt)
 
-        # Check if controller has a route attribute (for SimplifiedMPCController)
         has_route = hasattr(self.controller, 'route')
         route = getattr(self.controller, 'route', None) if has_route else None
 
@@ -87,14 +85,11 @@ class Simulator:
             )
             log.controls.append(u)
 
-            # --- logging (store copies of states) ---
             if k % self.cfg.log_interval == 0:
                 log.times.append(t)
 
-                # Copy own ship state
                 log.own_states.append(replace(self.own_ship.state))
 
-                # Copy every traffic vessel state
                 log.traffic_states.append(
                     [replace(v.state) for v in self.other_vessels]
                 )
@@ -112,23 +107,19 @@ class Simulator:
 
             # --- advance other vessels (simple kinematics, no control) ---
             for v in self.other_vessels:
-                # Save previous position before stepping
                 prev_x, prev_y = v.state.x, v.state.y
                 prev_psi = v.state.psi
 
-                # Move ship forward
                 u_traf = self.colreg.compute_target_control(v, self.own_ship)
 
                 v.step(u_traf, dt, chart_env=self.env)
 
                 # If new position is NOT navigable → bounce away from land
                 if not self.env.is_navigable(v.state.x, v.state.y):
-                    # revert to previous position
                     v.state.x = prev_x
                     v.state.y = prev_y
                     v.state.psi = (prev_psi + np.pi) % (2 * np.pi)   # 180° turn
 
-                    # move one step in reversed direction
                     v.state.x += v.state.v * np.cos(v.state.psi) * dt
                     v.state.y += v.state.v * np.sin(v.state.psi) * dt
 

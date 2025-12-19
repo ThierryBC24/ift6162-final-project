@@ -14,7 +14,7 @@ class DummyHeadingController:
     """Very simple controller: hold current heading (no collision avoidance)."""
 
     def compute_control(self, t, own_ship, other_vessels, env):
-        return 0.0  # no yaw rate change
+        return 0.0 
 
 def plot_trajectories(
     env: ChartEnvironment,
@@ -59,7 +59,6 @@ def plot_trajectories(
 
     # --- bounds handling ---
     if bounds is None:
-        # Prefer region corners if present (keeps map + traj consistent)
         cfg = getattr(env, "cfg", None) or getattr(env, "config", None)
         if cfg is not None and all(hasattr(cfg, k) for k in ["lat_min", "lat_max", "lon_min", "lon_max"]):
             x1, y1 = env.to_local(cfg.lat_min, cfg.lon_min)
@@ -124,10 +123,6 @@ def animate_trajectories(
     n_frames = len(log.own_states)
     print(f"Animating {n_frames} frames at {fps} fps...")
 
-    # own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log, dump_zone=300, scale=100)
-    # hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
-    # hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
-    # num_trajectories = len(hypothetical_trajectories[0])
     mpc_trajs = SimulateTraj(log)
     
     # Handle possible 0-traffic case
@@ -257,7 +252,6 @@ def animate_trajectories(
             traffic_arrows[i].set_positions((x_t, y_t), (x2_t, y2_t))
 
 
-        # each traffic vessel
         for i in range(n_traffic):
             tx = traffic_x[i]
             ty = traffic_y[i]
