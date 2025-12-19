@@ -327,7 +327,7 @@ def main() -> None:
             "traffic_x": 2000.0,
             "traffic_y": 0.0,
             "traffic_heading": 0.0,  # East
-            "traffic_speed": 4.0,
+            "traffic_speed": 2.0,
             "fix_positions": None,
         },
         {

@@ -313,14 +313,9 @@ class SimplifiedMPCController(Controller):
         dyn_states: List[VesselState] = None,
     ) -> int:
         """
-        COLREG-aware selection.
-        Base objective (as in your description):
-        - if aligned: minimize heading error after 1 step
-        - else: minimize distance from endpoint to waypoint
-
-        COLREG overlay:
-        - if a plausible head-on or starboard-crossing give-way situation exists,
-            bias toward starboard (right) turns.
+        Select optimal trajectory according to paper equations (15-17):
+        - If aligned (|θ(t) - θ_Target| ≤ 90°): minimize |θ_m(1) - θ_Target|
+        - Otherwise: minimize ||x_m(H) - w_i+1||
         """
         H = self.cfg.horizon
         dt = self.cfg.dt
@@ -330,153 +325,29 @@ class SimplifiedMPCController(Controller):
             # Shouldn't happen if feasible_mask ensured, but be safe.
             return int(np.argmin(np.isfinite(feasible_mask)))
 
-
         # -----------------------------
-        # Helpers
+        # Helper
         # -----------------------------
         def ang_diff(a, b):
             return abs(self._wrap_angle(a - b))
 
-        def is_starboard_turn(u: float) -> bool:
-            # Your comment implies: u < 0 => starboard turn
-            return u < 0.0
-
-        def is_port_turn(u: float) -> bool:
-            return u > 0.0
-
         # -----------------------------
-        # Determine COLREG preference
-        # -----------------------------
-        prefer_starboard = False
-
-        # COLREG detection parameters
-        d_alert = self.cfg.colreg_radius
-        fwd_sector = math.radians(20.0)
-        starboard_sector = math.radians(112.5)
-        same_course_tolerance = math.radians(10.0)  # For overtaking detection
-
-        # Track closest COLREG threat for distance-based bias scaling
-        closest_threat_dist = float('inf')
-        traffic_passing_factor = 1.0  # Factor to reduce bias when traffic is passing/moving away
-        
-        if dyn_states:
-            for other in dyn_states:
-                dx = other.x - own.x
-                dy = other.y - own.y
-                dist = math.hypot(dx, dy)
-
-                # Too far -> ignore (prevents always-on starboard bias)
-                if dist > d_alert:
-                    continue
-
-                bearing_math = math.atan2(dy, dx)
-                rel_bearing = self._wrap_angle(bearing_math - own.psi)
-                heading_diff = ang_diff(own.psi, other.psi)
-                
-                # Only apply COLREG bias if traffic is ahead or on the side (not astern)
-                # If traffic is astern (behind), it has passed and we don't need COLREG bias
-                # Astern is typically defined as rel_bearing > 112.5° or < -112.5°
-                astern_sector = math.radians(112.5)
-                if abs(rel_bearing) > astern_sector:
-                    # Traffic is astern (behind), has passed - no COLREG bias needed
-                    continue
-
-                # Check if traffic is moving away (passing) to reduce bias
-                # Relative velocity vector
-                vx_own = own.v * math.cos(own.psi)
-                vy_own = own.v * math.sin(own.psi)
-                vx_other = other.v * math.cos(other.psi)
-                vy_other = other.v * math.sin(other.psi)
-                
-                # Position vector from own to other (for closing check)
-                # If relative velocity is moving away from other, reduce bias
-                dvx = vx_own - vx_other
-                dvy = vy_own - vy_other
-                
-                # Normalize position vector
-                if dist > 1e-6:
-                    dx_norm = dx / dist
-                    dy_norm = dy / dist
-                    # Project relative velocity onto position vector
-                    # If positive, we're moving away from traffic
-                    closing_rate = -(dvx * dx_norm + dvy * dy_norm)
-                    
-                    # If closing rate is negative (moving away), reduce bias
-                    if closing_rate < 0:
-                        # Traffic is moving away, reduce bias significantly
-                        traffic_passing_factor = min(traffic_passing_factor, 0.2)
-                    elif closing_rate < 0.5:  # Slow closing or moving away
-                        traffic_passing_factor = min(traffic_passing_factor, 0.5)
-
-                # --- Overtaking (Rule 13): own ship is faster and other is ahead
-                # Own ship must keep clear, should pass on starboard (right) side
-                if own.v > other.v and heading_diff < same_course_tolerance:
-                    # Other vessel is ahead (in forward sector, not astern)
-                    if abs(rel_bearing) <= fwd_sector:
-                        prefer_starboard = True
-                        closest_threat_dist = min(closest_threat_dist, dist)
-                        break
-
-                # --- Head-on (Rule 14): other near dead ahead and reciprocal courses
-                # Reciprocal ~ pi (180°). Use > 150° as tolerant threshold.
-                if abs(rel_bearing) <= fwd_sector and heading_diff >= math.radians(150.0):
-                    prefer_starboard = True
-                    closest_threat_dist = min(closest_threat_dist, dist)
-                    break
-
-                # --- Crossing from starboard (Rule 15): other on your starboard bow sector
-                # According to COLREG code: "Starboard side = negative (clockwise) relative bearing"
-                # Sector: starboard bow is rel_bearing in [-112.5°, 0)
-                # Exclude "dead ahead" (already handled) and "abaft the beam" (overtaking-ish)
-                if (-starboard_sector < rel_bearing < -math.radians(1.0)):
-                    prefer_starboard = True
-                    closest_threat_dist = min(closest_threat_dist, dist)
-                    break
-
-        # -----------------------------
-        # Alignment rule (your original)
+        # Alignment rule (Equation 15)
         # -----------------------------
         angle_err_now = self._wrap_angle(theta_target - own.psi)
         aligned = abs(angle_err_now) <= math.radians(90.0)
-
-        # Weights (tune)
-        w_smooth = 0.05          # penalize large immediate heading change a bit
-        w_starboard = 3.0        # how strongly we bias toward starboard when needed (increased for COLREG compliance)
-        
-        # Distance-based scaling for COLREG bias (stronger when closer, weaker when farther)
-        # Scale from 1.0 at collision_radius to 0.3 at colreg_radius
-        # Also apply traffic_passing_factor to reduce bias when traffic is passing/moving away
-        if prefer_starboard and closest_threat_dist < float('inf'):
-            colreg_scale = 1.0 - 0.7 * max(0.0, (closest_threat_dist - self.cfg.collision_radius) / 
-                                          (self.cfg.colreg_radius - self.cfg.collision_radius))
-            colreg_scale = max(0.3, min(1.0, colreg_scale))  # Clamp to [0.3, 1.0]
-            colreg_scale *= traffic_passing_factor  # Reduce further if traffic is passing
-        else:
-            colreg_scale = 1.0
 
         best_idx = int(idxs[0])
         best_score = float("inf")
 
         if aligned:
+            # Equation (16): minimize |θ_m(1) - θ_Target|
             for m in idxs:
                 u = float(u_candidates[m])
-
                 # heading after first step
                 psi1 = self._wrap_angle(own.psi + u * dt)
-
-                # primary: align to target
+                # minimize heading error
                 score = ang_diff(theta_target, psi1)
-
-                # mild smoothness preference
-                score += w_smooth * ang_diff(psi1, own.psi)
-
-                # COLREG bias: penalize port when we prefer starboard
-                # Scale bias based on distance to threat (stronger when closer)
-                if prefer_starboard:
-                    if is_port_turn(u):
-                        score += w_starboard * 1.5 * colreg_scale  # Penalty for port turn (COLREG violation)
-                    elif is_starboard_turn(u):
-                        score -= w_starboard * 0.5 * colreg_scale  # Bonus for starboard turn (COLREG compliant)
 
                 if score < best_score:
                     best_score = score
@@ -485,44 +356,13 @@ class SimplifiedMPCController(Controller):
             return best_idx
 
         else:
+            # Equation (17): minimize ||x_m(H) - w_i+1||
             wp_x, wp_y = waypoint_xy
 
-            # Precompute path lengths only once for feasible candidates (optional but faster)
-            # path_len[m] = sum ||p[h]-p[h-1]||
-            path_len = {}
             for m in idxs:
-                traj = own_trajs[m]  # (H, 2)
-                diffs = traj[1:] - traj[:-1]
-                path_len[m] = float(np.sum(np.hypot(diffs[:, 0], diffs[:, 1])))
-
-            for m in idxs:
-                u = float(u_candidates[m])
                 end_x, end_y = own_trajs[m, H - 1]
-
-                # primary: endpoint distance to waypoint
+                # minimize endpoint distance to waypoint
                 score = math.hypot(end_x - wp_x, end_y - wp_y)
-
-                # detour penalty: discourage overly long trajectories
-                straight = math.hypot(wp_x - own.x, wp_y - own.y)
-                # avoid division by zero
-                if straight > 1e-6:
-                    detour_ratio = path_len[m] / straight
-                    if detour_ratio > 1.3:
-                        score += 0.2 * (detour_ratio - 1.3)  # soft penalty
-
-                # COLREG bias
-                # Scale bias based on distance to threat and waypoint distance
-                # Make it proportional to waypoint distance so it doesn't override waypoint following too much
-                if prefer_starboard:
-                    # Scale by both threat distance and waypoint distance for balanced behavior
-                    # Reduce bias when far from waypoint to prioritize waypoint following
-                    waypoint_scale = min(1.0, straight / 4000.0)  # Normalize to waypoint distance
-                    combined_scale = colreg_scale * waypoint_scale
-                    
-                    if is_port_turn(u):
-                        score += w_starboard * 15.0 * combined_scale  # Penalty for port turn (COLREG violation)
-                    elif is_starboard_turn(u):
-                        score -= w_starboard * 5.0 * combined_scale  # Bonus for starboard turn (COLREG compliant)
 
                 if score < best_score:
                     best_score = score
