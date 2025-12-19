@@ -255,15 +255,22 @@ def animate_trajectories(
         
         trjectories = mpc_trajs.get_traj_per_snapshot(frame)
         colors, u_armin = mpc_trajs.get_colors_per_snapshot(frame)
+
         for traj_idx in range(mpc_trajs.n_candidate):
-            traj_x = trjectories[traj_idx][:, 0]
-            traj_y = trjectories[traj_idx][:, 1]
-            if traj_idx == u_armin:
-                color = "blue"
-            else:
-                color = "green" if colors[traj_idx] else "red"
-            hypothetical_lines[traj_idx].set_data(traj_x, traj_y)
-            hypothetical_lines[traj_idx].set_color(color)
+            try:
+                traj_x = trjectories[traj_idx][:, 0]
+                traj_y = trjectories[traj_idx][:, 1]
+                if traj_idx == u_armin:
+                    color = "blue"
+                else:
+                    color = "green" if colors[traj_idx] else "red"
+                hypothetical_lines[traj_idx].set_data(traj_x, traj_y)
+                hypothetical_lines[traj_idx].set_color(color)
+            except IndexError:
+                break
+            except Exception as e:
+                print(f"Error updating hypothetical trajectory {traj_idx} at frame {frame}: {e}")
+                continue
 
 
         return [own_line, own_head, own_arrow, *traffic_lines, *traffic_heads, *traffic_arrows, *hypothetical_lines]
