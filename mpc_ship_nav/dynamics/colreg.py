@@ -124,7 +124,6 @@ class COLREGLogic:
         # Closing speed (negative = approaching)
         closing_speed = (dvx * dx + dvy * dy) / distance
 
-        # Crossing speed (perpendicular component)
         cross_product = dvx * dy - dvy * dx
         crossing_speed = abs(cross_product) / distance
 
@@ -136,12 +135,9 @@ class COLREGLogic:
         if crossing_speed > CROSSING_SPEED_THRESHOLD:
             return False
 
-        # Low crossing speed → potential collision course
-        # Check if approaching
         if closing_speed < CLOSING_SPEED_THRESHOLD:
-            return True  # Low crossing + approaching = RISK
+            return True 
 
-        # Low crossing but not approaching → no risk
         return False
 
     def _classify_encounter(self, target: Vessel, own_ship: Vessel) -> str:
@@ -225,22 +221,15 @@ class COLREGLogic:
 
         # Crossing encounter (COLREG Rule 15)
         # Give-way vessel (determined by _target_must_give_way) turns starboard
-        # But we can validate this is safe using closing speed
 
         if abs(closing_speed) < 0.5:
-            # Very low closing speed - ships on nearly parallel/perpendicular courses
-            # COLREG still applies but less critical
-            # Could consider velocity preference if it's close
             if velocity_preference == -1:
-                return -1  # Agrees with COLREG, use starboard
+                return -1 
             else:
-                # Velocity suggests port, but COLREG requires starboard
-                # Follow COLREG (safety through predictability)
                 return -1
 
-        # Normal crossing with significant closing speed
         # COLREG Rule 15: Give-way vessel turns starboard
-        return -1  # Starboard per COLREG
+        return -1  
 
     def _emergency_turn_direction(self, target: Vessel, own_ship: Vessel) -> int:
         """
