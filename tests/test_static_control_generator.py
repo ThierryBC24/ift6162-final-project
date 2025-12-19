@@ -36,7 +36,6 @@ class TestStaticControlSeqGenerator:
         
         controls = generator.control_sequences
         
-        # First column should span [-max_yaw_rate, max_yaw_rate]
         first_column = controls[:, 0]
         assert abs(first_column[0] - (-max_yaw_rate)) < 1e-6
         assert abs(first_column[-1] - max_yaw_rate) < 1e-6
@@ -53,13 +52,12 @@ class TestStaticControlSeqGenerator:
         
         controls = generator.control_sequences
         
-        # For each trajectory, check decay
         for traj_idx in range(5):
-            for step in range(15):  # Check up to second-to-last step
+            for step in range(15):
                 current = controls[traj_idx, step]
                 next_val = controls[traj_idx, step + 1]
                 
-                if abs(current) > 1e-6:  # Avoid division by zero
+                if abs(current) > 1e-6:
                     actual_decay = next_val / current
                     assert abs(actual_decay - decay_factor) < 1e-6
 
@@ -74,7 +72,6 @@ class TestStaticControlSeqGenerator:
         
         controls = generator.control_sequences
         
-        # After first step, all should be zero
         for traj_idx in range(3):
             for step in range(1, 5):
                 assert abs(controls[traj_idx, step]) < 1e-6
@@ -90,8 +87,6 @@ class TestStaticControlSeqGenerator:
         
         controls = generator.control_sequences
         assert controls.shape == (1, 10)
-        # With num_trajectories=1, np.linspace(-max, max, 1) returns [-max]
-        # So the first value should be -max_yaw_rate
         assert abs(controls[0, 0] - (-math.radians(20.0))) < 1e-6
 
     def test_horizon_one(self):
@@ -106,7 +101,6 @@ class TestStaticControlSeqGenerator:
         controls = generator.control_sequences
         assert controls.shape == (5, 1)
         
-        # Should still span the range
         first_column = controls[:, 0]
         max_yaw = math.radians(20.0)
         assert abs(first_column[0] - (-max_yaw)) < 1e-6

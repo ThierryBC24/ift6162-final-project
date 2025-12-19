@@ -26,7 +26,6 @@ class TestVesselState:
         assert copied.x == state.x
         assert copied.y == state.y
         
-        # Modify copy and verify original unchanged
         copied.x = 999.0
         assert state.x == 100.0
 
@@ -43,7 +42,6 @@ class TestVesselDynamics:
         dt = 1.0
         vessel.step(u=0.0, dt=dt)
         
-        # After 1 second at 10 m/s heading East (0°)
         expected_x = 10.0
         expected_y = 0.0
         
@@ -58,10 +56,9 @@ class TestVesselDynamics:
         vessel = Vessel(state, params)
         
         dt = 1.0
-        u = -math.radians(10.0)  # Turn starboard 10°/s
+        u = -math.radians(10.0)
         vessel.step(u=u, dt=dt)
         
-        # Heading should decrease (turn right)
         assert vessel.state.psi < 0.0
         assert abs(vessel.state.psi - (-math.radians(10.0))) < 1e-3
 
@@ -72,10 +69,9 @@ class TestVesselDynamics:
         vessel = Vessel(state, params)
         
         dt = 1.0
-        u = math.radians(10.0)  # Turn port 10°/s
+        u = math.radians(10.0)
         vessel.step(u=u, dt=dt)
         
-        # Heading should increase (turn left)
         assert vessel.state.psi > 0.0
         assert abs(vessel.state.psi - math.radians(10.0)) < 1e-3
 
@@ -86,10 +82,9 @@ class TestVesselDynamics:
         vessel = Vessel(state, params)
         
         dt = 1.0
-        u_excessive = math.radians(50.0)  # Exceeds max_yaw_rate
+        u_excessive = math.radians(50.0)
         vessel.step(u=u_excessive, dt=dt)
         
-        # Should be clipped to max_yaw_rate
         expected_psi = math.radians(20.0)
         assert abs(vessel.state.psi - expected_psi) < 1e-3
 
@@ -101,16 +96,12 @@ class TestVesselDynamics:
         
         initial_psi = state.psi
         dt = 1.0
-        u = math.radians(15.0)  # Turn port (positive)
+        u = math.radians(15.0)
         vessel.step(u=u, dt=dt)
         
-        # Heading should wrap: (π - 0.1) + 15° = π - 0.1 + 0.262 = π + 0.162
-        # This should wrap to approximately -π + 0.162 = -2.98
         expected_psi = initial_psi + u * dt
-        # Normalize using same method as implementation (arctan2)
         expected_psi = np.arctan2(np.sin(expected_psi), np.cos(expected_psi))
         
-        # Verify heading is in valid range and matches expected wrapped value
         assert -math.pi <= vessel.state.psi <= math.pi, \
             f"Heading {vessel.state.psi} should be in [-π, π]"
         assert abs(vessel.state.psi - expected_psi) < 1e-6, \
@@ -123,15 +114,13 @@ class TestVesselDynamics:
         vessel = Vessel(state, params)
         
         dt = 1.0
-        u = math.radians(5.0)  # Small constant turn
+        u = math.radians(5.0)
         
-        # Step 5 times
         for _ in range(5):
             vessel.step(u=u, dt=dt)
         
-        # Should have moved forward and turned
         assert vessel.state.x > 0.0
-        assert vessel.state.y > 0.0  # Turning left, so y increases
+        assert vessel.state.y > 0.0
         assert vessel.state.psi > 0.0
 
     def test_get_position(self):

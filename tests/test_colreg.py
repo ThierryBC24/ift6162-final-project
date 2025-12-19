@@ -30,45 +30,39 @@ class TestCOLREGLogic:
         """Test collision risk detection for approaching vessels."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship ahead, heading West (head-on)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi, v=8.0, x=2000.0, y=0.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         risk = logic._risk_of_collision(target, own_ship)
-        assert risk is True  # Head-on collision risk
+        assert risk is True
 
     def test_risk_of_collision_diverging(self):
         """Test collision risk for diverging vessels."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship ahead, also heading East (same direction, diverging)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=0.0, v=8.0, x=2000.0, y=0.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         risk = logic._risk_of_collision(target, own_ship)
-        assert risk is False  # Same direction, no collision risk
+        assert risk is False
 
     def test_classify_encounter_headon(self):
         """Test head-on encounter classification."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship ahead, heading West (reciprocal course)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi, v=8.0, x=2000.0, y=0.0
         )
@@ -81,11 +75,9 @@ class TestCOLREGLogic:
         """Test crossing encounter from starboard side."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship on starboard side, heading North (crossing)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=2000.0, y=-2000.0
         )
@@ -98,11 +90,9 @@ class TestCOLREGLogic:
         """Test overtaking encounter classification."""
         logic = COLREGLogic()
         
-        # Own ship heading East, slower
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=5.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship behind, heading East, faster (overtaking)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=0.0, v=10.0, x=-1000.0, y=0.0
         )
@@ -115,63 +105,47 @@ class TestCOLREGLogic:
         """Test COLREG crossing give-way logic - target on starboard must give way."""
         logic = COLREGLogic()
         
-        # Own ship heading East (0°)
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship directly on starboard side (at -90° relative bearing)
-        # Position: (0, -1000) relative to own at (0, 0)
-        # Bearing from own to target: atan2(-1000, 0) = -π/2
-        # Relative bearing: -π/2 - 0 = -π/2 (in starboard sector)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=0.0, y=-1000.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         encounter = logic._classify_encounter(target, own_ship)
-        assert encounter == "crossing"  # Should be classified as crossing
+        assert encounter == "crossing"
         
         must_give_way = logic._target_must_give_way(encounter, target, own_ship)
         
-        # Target is in starboard sector (-112.5° < rel_bearing <= 0°)
-        # -π/2 ≈ -90° is in this range, so target MUST give way
         assert must_give_way == True
 
     def test_target_must_give_way_crossing_port(self):
         """Test COLREG crossing give-way logic - target on port does NOT give way."""
         logic = COLREGLogic()
         
-        # Own ship heading East (0°)
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship directly on port side (at +90° relative bearing)
-        # Position: (0, 1000) relative to own at (0, 0)
-        # Bearing from own to target: atan2(1000, 0) = π/2
-        # Relative bearing: π/2 - 0 = π/2 (NOT in starboard sector)
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=0.0, y=1000.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         encounter = logic._classify_encounter(target, own_ship)
-        assert encounter == "crossing"  # Should be classified as crossing
+        assert encounter == "crossing"
         
         must_give_way = logic._target_must_give_way(encounter, target, own_ship)
         
-        # Target is on port side (π/2 > 0°), NOT in starboard sector
-        # So target does NOT give way (own ship must give way)
         assert must_give_way == False
 
     def test_compute_target_control_no_risk(self):
         """Test that target maintains course when no collision risk."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship far away, heading same direction
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=0.0, v=8.0, x=10000.0, y=0.0
         )
@@ -179,18 +153,15 @@ class TestCOLREGLogic:
         
         u = logic.compute_target_control(target, own_ship)
         
-        # Should maintain course (return 0.0)
         assert abs(u) < 1e-6
 
     def test_compute_target_control_emergency_avoidance(self):
         """Test emergency collision avoidance (< 0.5 nm)."""
         logic = COLREGLogic()
         
-        # Own ship heading East
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship very close, heading toward own ship
         target_state = VesselState(
             lat=0.0, lon=0.0, psi=math.pi, v=8.0, x=500.0, y=0.0
         )
@@ -198,22 +169,16 @@ class TestCOLREGLogic:
         
         u = logic.compute_target_control(target, own_ship)
         
-        # Should turn to avoid (non-zero yaw rate)
         assert abs(u) > 1e-6
 
     def test_wrap_angle(self):
         """Test angle wrapping utility."""
         logic = COLREGLogic()
         
-        # Test normal range
         assert abs(logic._wrap_angle(0.0)) < 1e-6
         assert abs(logic._wrap_angle(math.pi / 2) - math.pi / 2) < 1e-6
-        
-        # Test overflow
         assert abs(logic._wrap_angle(2 * math.pi)) < 1e-6
         assert abs(logic._wrap_angle(3 * math.pi / 2) + math.pi / 2) < 1e-6
-        
-        # Test underflow
         assert abs(logic._wrap_angle(-2 * math.pi)) < 1e-6
         assert abs(logic._wrap_angle(-3 * math.pi / 2) - math.pi / 2) < 1e-6
 

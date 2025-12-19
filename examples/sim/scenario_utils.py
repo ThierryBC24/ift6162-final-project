@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 import matplotlib.pyplot as plt
+import numpy as np
 from shapely.geometry import Polygon
 
 from mpc_ship_nav.charts.config import RegionConfig
@@ -206,4 +207,92 @@ def save_animation(
     """Save simulation animation as GIF."""
     animate_trajectories(env, log, route, fps=fps, save_path=output_path)
     print(f"Saved: {output_path}")
+
+
+def spawn_random_background_vessels(
+    env: ChartEnvironment,
+    lat_min: float,
+    lat_max: float,
+    lon_min: float,
+    lon_max: float,
+    n_vessels: int,
+    speed_range: Tuple[float, float] = (3.0, 8.0),
+    max_yaw_rate_deg: float = 20.0,
+) -> List[Vessel]:
+    """Spawn random background vessels in a given geographic region."""
+    vessels: List[Vessel] = []
+
+    x1, y1 = env.to_local(lat_min, lon_min)
+    x2, y2 = env.to_local(lat_max, lon_max)
+    x_min, x_max = min(x1, x2), max(x1, x2)
+    y_min, y_max = min(y1, y2), max(y1, y2)
+
+    for _ in range(n_vessels):
+        for _ in range(200):
+            x = float(np.random.uniform(x_min, x_max))
+            y = float(np.random.uniform(y_min, y_max))
+
+            if not env.is_navigable(x, y):
+                continue
+
+            lat, lon = env.to_geo(x, y)
+            psi = float(np.random.uniform(-np.pi, np.pi))
+            v = float(np.random.uniform(*speed_range))
+
+            state = VesselState(lat=lat, lon=lon, psi=psi, v=v, x=x, y=y)
+            params = VesselParams(max_yaw_rate=math.radians(max_yaw_rate_deg))
+            vessels.append(Vessel(state, params))
+            break
+
+    return vessels
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate great-circle distance in kilometers."""
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * \
+        math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def auto_bounds(lat1: float, lon1: float, lat2: float, lon2: float) -> Tuple[float, float, float, float]:
+    """
+    Compute automatic bounding box for a route.
+    
+    Paper-faithful auto-bounds:
+    - small padding for coastal (~<150 km)
+    - medium padding for regional (150–300 km)
+    - reject trips that are too long for the paper's scale (>300 km)
+    
+    Returns:
+        (lat_min, lat_max, lon_min, lon_max)
+    """
+    dist_km = haversine_km(lat1, lon1, lat2, lon2)
+    print(f"[auto_bounds] trip distance ~{dist_km:.1f} km")
+
+    if dist_km < 150.0:
+        pad = 0.3
+        print("[auto_bounds] Using small coastal bounding box")
+    elif dist_km < 300.0:
+        pad = 0.5
+        print("[auto_bounds] Using medium regional bounding box")
+    else:
+        raise RuntimeError(
+            f"[auto_bounds] Trip distance {dist_km:.1f} km exceeds the "
+            "intended paper-scale navigation range. Split the route into "
+            "smaller legs or use a different planner."
+        )
+
+    lat_min = min(lat1, lat2) - pad
+    lat_max = max(lat1, lat2) + pad
+    lon_min = min(lon1, lon2) - pad
+    lon_max = max(lon1, lon2) + pad
+
+    print("Computed auto-bounds:")
+    print(" lat:", lat_min, "→", lat_max)
+    print(" lon:", lon_min, "→", lon_max)
+
+    return lat_min, lat_max, lon_min, lon_max
 

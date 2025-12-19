@@ -262,14 +262,6 @@ class SimplifiedMPCController(Controller):
                 if not feasible[m]:
                     break
 
-                # --- static collision check (if enabled) ---
-                # if static_xy.size > 0:
-                #     dx = static_xy[:, 0] - px
-                #     dy = static_xy[:, 1] - py
-                #     if np.any(dx * dx + dy * dy < self.cfg.collision_radius ** 2):
-                #         feasible[m] = False
-                #         break
-
         return feasible, own_trajs, own_trajs_vis
 
     def _predict_dynamic(self, dyn_states: List[VesselState]) -> List[np.ndarray]:

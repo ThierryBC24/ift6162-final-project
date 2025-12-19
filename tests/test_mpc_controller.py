@@ -49,11 +49,9 @@ class TestWaypointRoute:
         waypoints = np.array([[0.0, 0.0], [1000.0, 0.0], [2000.0, 0.0]])
         route = WaypointRoute(waypoints, transition_radius=100.0)
         
-        # Start away from first waypoint to avoid immediate transition
         state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=500.0, y=0.0)
         wp_x, wp_y = route.current_waypoint(state)
         
-        # Should return first waypoint since we're > 100m away
         assert wp_x == 0.0
         assert wp_y == 0.0
         assert route.idx == 0
@@ -63,17 +61,14 @@ class TestWaypointRoute:
         waypoints = np.array([[0.0, 0.0], [1000.0, 0.0], [2000.0, 0.0]])
         route = WaypointRoute(waypoints, transition_radius=100.0)
         
-        # Start away from first waypoint
         state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=500.0, y=0.0)
         route.current_waypoint(state)
         assert route.idx == 0
         
-        # Move close to first waypoint (within transition radius)
         state.x = 50.0
         state.y = 0.0
         wp_x, wp_y = route.current_waypoint(state)
         
-        # Should advance to second waypoint
         assert route.idx == 1
         assert wp_x == 1000.0
         assert wp_y == 0.0
@@ -83,12 +78,10 @@ class TestWaypointRoute:
         waypoints = np.array([[0.0, 0.0], [1000.0, 0.0]])
         route = WaypointRoute(waypoints, transition_radius=100.0)
         
-        # Move to last waypoint
         route.idx = 1
         state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=1000.0, y=0.0)
         wp_x, wp_y = route.current_waypoint(state)
         
-        # Should stay at last waypoint
         assert route.idx == 1
         assert wp_x == 1000.0
         assert wp_y == 0.0
@@ -98,10 +91,10 @@ class TestWaypointRoute:
         waypoints = np.array([[0.0, 0.0], [1000.0, 0.0]])
         route = WaypointRoute(waypoints, transition_radius=100.0)
         
-        assert not route.is_finished()  # At first waypoint
+        assert not route.is_finished()
         
         route.idx = 1
-        assert route.is_finished()  # At last waypoint
+        assert route.is_finished()
 
     def test_empty_waypoints(self):
         """Test behavior with empty waypoint list."""
@@ -111,7 +104,6 @@ class TestWaypointRoute:
         state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=100.0, y=200.0)
         wp_x, wp_y = route.current_waypoint(state)
         
-        # Should return current position
         assert wp_x == 100.0
         assert wp_y == 200.0
 
@@ -161,16 +153,12 @@ class TestSelectBest:
         """Test Equation (16): minimize heading error when aligned."""
         controller = SimplifiedMPCController(dt=1.0, waypoints_xy=np.array([[0, 0], [1000, 0]]))
         
-        # Own ship heading East (0°), waypoint also East
         own = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
-        waypoint_xy = (1000.0, 0.0)  # East
-        theta_target = 0.0  # East
+        waypoint_xy = (1000.0, 0.0)
+        theta_target = 0.0
         
-        # Create candidate trajectories with different yaw rates
         n_candidates = 5
-        u_candidates = np.linspace(-0.1, 0.1, n_candidates)  # Small yaw rates
-        
-        # Simulate trajectories
+        u_candidates = np.linspace(-0.1, 0.1, n_candidates)
         H = controller.cfg.horizon
         own_trajs = np.zeros((n_candidates, H, 2))
         for m, u in enumerate(u_candidates):
@@ -188,24 +176,18 @@ class TestSelectBest:
             own, waypoint_xy, theta_target, u_candidates, own_trajs, feasible_mask
         )
         
-        # Should select trajectory with smallest heading error after 1 step
-        # u=0 should be best (no turn, heading stays at 0°)
-        assert best_idx == 2  # Middle index (u=0)
+        assert best_idx == 2
 
     def test_unaligned_case_minimize_distance(self):
         """Test Equation (17): minimize endpoint distance when not aligned."""
         controller = SimplifiedMPCController(dt=1.0, waypoints_xy=np.array([[0, 0], [0, 1000]]))
         
-        # Own ship heading East (0°), waypoint North (90°)
         own = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
-        waypoint_xy = (0.0, 1000.0)  # North
-        theta_target = math.pi / 2  # North
+        waypoint_xy = (0.0, 1000.0)
+        theta_target = math.pi / 2 + 0.1
         
-        # Create candidate trajectories
         n_candidates = 5
         u_candidates = np.linspace(-0.2, 0.2, n_candidates)
-        
-        # Simulate trajectories
         H = controller.cfg.horizon
         own_trajs = np.zeros((n_candidates, H, 2))
         for m, u in enumerate(u_candidates):
@@ -223,8 +205,6 @@ class TestSelectBest:
             own, waypoint_xy, theta_target, u_candidates, own_trajs, feasible_mask
         )
         
-        # Should select trajectory that ends closest to waypoint
-        # Calculate actual distances to verify
         wp_x, wp_y = waypoint_xy
         distances = []
         for m in range(n_candidates):
@@ -232,51 +212,31 @@ class TestSelectBest:
             dist = math.hypot(end_x - wp_x, end_y - wp_y)
             distances.append(dist)
         
-        # The selected trajectory should have the minimum distance among feasible ones
-        # Get feasible indices (all in this case since feasible_mask is all True)
         feasible_idxs = np.where(feasible_mask)[0]
         feasible_distances = [distances[i] for i in feasible_idxs]
         min_feasible_dist = min(feasible_distances)
         selected_dist = distances[best_idx]
         
-        # Verify the selected trajectory is actually feasible
         assert best_idx in feasible_idxs, f"Selected idx {best_idx} must be in feasible set"
         
-        # Verify the selected trajectory minimizes distance
-        # The implementation should select the trajectory with minimum endpoint distance
-        # Note: Due to potential floating point differences or test setup, we verify that
-        # the selected trajectory is optimal (or very close to optimal)
-        
-        # Check that selected distance is at most slightly larger than minimum
-        # (allowing for floating point precision, but catching real bugs)
-        tolerance = max(1e-6, min_feasible_dist * 1e-6)  # Relative tolerance
-        assert selected_dist <= min_feasible_dist + tolerance or abs(selected_dist - min_feasible_dist) < 5.0, \
-            f"Selected trajectory distance {selected_dist:.6f} should minimize distance (min: {min_feasible_dist:.6f}, diff: {abs(selected_dist - min_feasible_dist):.6f})"
-        
-        # Verify it's selecting from the best candidates (top 2-3 closest)
-        sorted_distances = sorted(enumerate(distances), key=lambda x: x[1])
-        top_3_indices = [idx for idx, _ in sorted_distances[:3]]
-        assert best_idx in top_3_indices, \
-            f"Selected idx {best_idx} should be among top 3 closest trajectories. Top 3: {top_3_indices}, distances: {[distances[i] for i in top_3_indices]}"
+        min_idx = feasible_idxs[np.argmin(feasible_distances)]
+        assert best_idx == min_idx, \
+            f"Selected idx {best_idx} (dist={selected_dist:.6f}) should equal minimum idx {min_idx} (dist={min_feasible_dist:.6f})"
 
     def test_alignment_threshold(self):
         """Test that 90° threshold correctly determines alignment."""
         controller = SimplifiedMPCController(dt=1.0, waypoints_xy=np.array([[0, 0], [1000, 0]]))
         
-        # Test at exactly 90° (should be considered aligned, uses heading error minimization)
         own = VesselState(lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=0.0, y=0.0)
         waypoint_xy = (1000.0, 0.0)
-        theta_target = 0.0  # Waypoint is East, but ship is heading North
+        theta_target = 0.0
         
-        # Check alignment: |π/2 - 0| = π/2 = 90°, so should be aligned
         angle_err = abs(controller._wrap_angle(theta_target - own.psi))
         assert angle_err <= math.radians(90.0), "Should be considered aligned"
         
         n_candidates = 3
         u_candidates = np.array([-0.1, 0.0, 0.1])
         H = controller.cfg.horizon
-        
-        # Simulate trajectories
         own_trajs = np.zeros((n_candidates, H, 2))
         for m, u in enumerate(u_candidates):
             x, y = 0.0, 0.0
@@ -293,8 +253,6 @@ class TestSelectBest:
             own, waypoint_xy, theta_target, u_candidates, own_trajs, feasible_mask
         )
         
-        # Since aligned, should minimize heading error after 1 step
-        # Calculate heading errors to verify
         psi1_errors = []
         for m, u in enumerate(u_candidates):
             psi1 = controller._wrap_angle(own.psi + u * controller.cfg.dt)
@@ -322,12 +280,6 @@ class TestSelectBest:
             own, waypoint_xy, theta_target, u_candidates, own_trajs, feasible_mask
         )
         
-        # Should return index of u closest to 0 (fallback behavior)
-        # The implementation uses np.argmin(np.isfinite(feasible_mask))
-        # which returns the first False index, but let's verify it's valid
         assert 0 <= best_idx < n_candidates
-        
-        # Verify it's actually the fallback (should be index 0 based on implementation)
-        # But more importantly, verify the method doesn't crash
         assert isinstance(best_idx, (int, np.integer))
 
