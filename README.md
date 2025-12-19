@@ -159,11 +159,6 @@ ift6162-final-project/
 - **Limited control authority**: The controller acts only on steering (heading changes). In dense traffic scenarios, speed control would be necessary
 - **Discretized control**: The simplified MPC evaluates a finite set of constant turning rates, which trades optimality for real-time feasibility
 
-## What to do next
-- **Baseline Comparision:** Add a naive controller which uses the global planner with a control selection system that aims to minimize the distance between the ship and the waypoints.
-- **Benchamark and metrics** Log the total time of the trajectory and number of collision.
-
-
 ## Reference
 
 Primul Potočnik. "Model Predictive Control for Autonomous Ship Navigation with COLREG Compliance and Chart-Based Path Planning". In: *Journal of Marine Science and Engineering* 13.7 (2025). ISSN: 2077-1312. DOI: 10.3390/jmse13071246. URL: https://www.mdpi.com/2077-1312/13/7/1246
