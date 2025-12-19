@@ -49,11 +49,6 @@ def main():
 
     collision_occurred, collision_time, min_dist = check_collisions(log)
     final_time = log.times[-1] if log.times else 0.0
-    if collision_occurred:
-        print(f"ERROR: Collision at t={collision_time:.1f}s, min_d={min_dist:.1f}m")
-        return 1
-    else:
-        print(f"OK: No collision, min_d={min_dist:.1f}m, simulation ended at t={final_time:.1f}s")
 
     if not args.no_plot:
         plot_results(env, log, route)
@@ -62,7 +57,13 @@ def main():
         out_path = Path(__file__).resolve().parent / "test_colreg_headon.gif"
         save_animation(env, log, route, out_path)
 
-    return 0
+    # Check collision and return appropriate exit code
+    if collision_occurred:
+        print(f"ERROR: Collision at t={collision_time:.1f}s, min_d={min_dist:.1f}m")
+        return 1
+    else:
+        print(f"OK: No collision, min_d={min_dist:.1f}m, simulation ended at t={final_time:.1f}s")
+        return 0
 
 
 if __name__ == "__main__":

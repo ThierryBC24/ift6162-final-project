@@ -28,8 +28,6 @@ class COLREGLogic:
             collision_threshold: Distance threshold for collision risk [m]
         """
         self.collision_threshold = collision_threshold
-        # Track original heading for overtaking encounters (per vessel)
-        # Key: vessel id, Value: original heading when overtaking started
         self._overtaking_original_headings: dict = {}
 
     def compute_target_control(self, target: Vessel, own_ship: Vessel) -> float:
@@ -47,7 +45,6 @@ class COLREGLogic:
         distance = self._distance(target, own_ship)
 
         # Emergency collision avoidance (< 0.5 nm)
-        # All ships avoid regardless of give-way rules, no starboard priority
         in_collision_zone = distance <= D_COLLISION
         if in_collision_zone:
             risk = self._risk_of_collision(target, own_ship)
@@ -55,30 +52,26 @@ class COLREGLogic:
                 sign = self._emergency_turn_direction(target, own_ship)
                 return sign * target.params.max_yaw_rate
 
-        # COLREG compliance (0.5-3.0 nm) - existing logic
+        # COLREG compliance (0.5-3.0 nm) 
         in_colreg_radius = distance <= self.collision_threshold
         risk_of_collision = self._risk_of_collision(target, own_ship) if in_colreg_radius else False
 
-        # Check if we're returning to original heading after overtaking
         if target_id in self._overtaking_original_headings:
             if not in_colreg_radius:
-                # Other ship is out of COLREG radius, return to original heading
+
                 original_heading = self._overtaking_original_headings[target_id]
                 current_heading = target.state.psi
 
-                # Calculate heading error (normalized to [-π, π])
                 heading_error = self._wrap_angle(current_heading - original_heading)
 
-                # If we're close enough to original heading, clear the tracking
                 if abs(heading_error) < np.radians(5.0):
                     del self._overtaking_original_headings[target_id]
                     return 0.0
 
-                # Turn towards original heading (opposite direction of error)
                 if heading_error > 0:
-                    return -target.params.max_yaw_rate  # Turn starboard (right)
+                    return -target.params.max_yaw_rate  
                 else:
-                    return target.params.max_yaw_rate  # Turn port (left)
+                    return target.params.max_yaw_rate  
             # If still in COLREG radius, continue with normal COLREG logic below
 
         if not risk_of_collision:
@@ -104,11 +97,12 @@ class COLREGLogic:
 
     def _risk_of_collision(self, target: Vessel, own_ship: Vessel) -> bool:
         """
-        Determine if there is a risk of collision using closing speed.
+        Determine if there is a risk of collision using BOTH closing and crossing speed.
 
-        COLREG-compliant approach:
-        - Closing speed > -0.5 m/s: No significant risk (parallel/perpendicular courses)
-        - Closing speed < -0.5 m/s: Risk exists (approaching)
+        Logic:
+        1. High crossing speed → Ships will miss → No risk
+        2. Low crossing speed + approaching → Collision course → Risk
+        3. Low crossing speed + separating → No risk
 
         Returns True if there is risk, False otherwise.
         """
@@ -127,21 +121,28 @@ class COLREGLogic:
         dvx = vx_o - vx_t
         dvy = vy_o - vy_t
 
-        # Calculate closing speed (negative = approaching)
-        dot_product = dvx * dx + dvy * dy
-        closing_speed = dot_product / distance
+        # Closing speed (negative = approaching)
+        closing_speed = (dvx * dx + dvy * dy) / distance
 
-        # COLREG thresholds for risk assessment
-        # > -0.5 m/s: Low/no risk (parallel, perpendicular, or separating)
-        # < -0.5 m/s: Moderate/high risk (approaching)
-        CLOSING_SPEED_THRESHOLD = -0.5  # m/s
+        # Crossing speed (perpendicular component)
+        cross_product = dvx * dy - dvy * dx
+        crossing_speed = abs(cross_product) / distance
 
-        if closing_speed > CLOSING_SPEED_THRESHOLD:
-            # Low closing speed or already separating - no significant risk
+        # Thresholds
+        CROSSING_SPEED_THRESHOLD = 2.0  # m/s (high = will miss)
+        CLOSING_SPEED_THRESHOLD = -0.5  # m/s (negative = approaching)
+
+        # High crossing speed → ships will miss each other
+        if crossing_speed > CROSSING_SPEED_THRESHOLD:
             return False
 
-        # Significant closing speed - risk of collision exists
-        return True
+        # Low crossing speed → potential collision course
+        # Check if approaching
+        if closing_speed < CLOSING_SPEED_THRESHOLD:
+            return True  # Low crossing + approaching = RISK
+
+        # Low crossing but not approaching → no risk
+        return False
 
     def _classify_encounter(self, target: Vessel, own_ship: Vessel) -> str:
         """
@@ -177,7 +178,6 @@ class COLREGLogic:
 
         if encounter == "crossing":
             rel_bearing = self._relative_bearing(target, own_ship)
-            # Starboard side = negative (clockwise) relative bearing in our convention
             return -np.radians(112.5) < rel_bearing <= 1e-6
 
         if encounter == "overtaking":
@@ -192,53 +192,39 @@ class COLREGLogic:
 
         COLREG rules take priority. Velocity vectors used for:
         - Validation that COLREG direction is safe
-        - Tiebreaking in symmetric situations
-        - Detecting edge cases
 
         Returns +1 for port (left) turn, -1 for starboard (right) turn.
         """
-        # Calculate velocity-based cross product (for validation/optimization)
         dx = own_ship.state.x - target.state.x
         dy = own_ship.state.y - target.state.y
         d_magnitude = np.hypot(dx, dy)
 
-        # Velocity vectors
         vx_target = target.state.v * np.cos(target.state.psi)
         vy_target = target.state.v * np.sin(target.state.psi)
         vx_own = own_ship.state.v * np.cos(own_ship.state.psi)
         vy_own = own_ship.state.v * np.sin(own_ship.state.psi)
 
-        # Relative velocity
         dvx = vx_own - vx_target
         dvy = vy_own - vy_target
 
-        # Closing speed (negative = approaching)
         closing_speed = (dvx * dx + dvy * dy) / d_magnitude
 
-        # Cross product (indicates optimal turn direction from physics)
         cross_product = dvx * dy - dvy * dx
 
-        # Velocity-based preference (what pure physics would suggest)
         velocity_preference = -1 if cross_product > 0 else 1 if cross_product < 0 else -1
 
         # Apply COLREG constraints (STRICT PRIORITY)
 
         if encounter == "head_on":
             # COLREG Rule 14: Both vessels must turn starboard
-            # This is MANDATORY for safety and predictability
-            # Velocity preference only used if perfectly ambiguous (rare)
             return -1  # Always starboard
 
         if encounter == "overtaking":
             # COLREG Rule 13: Overtaking vessel keeps clear
-            # Overtaken vessel (target in this case) turns starboard
-            return -1  # Always starboard
+            return -1  
 
         # Crossing encounter (COLREG Rule 15)
         # Give-way vessel (determined by _target_must_give_way) turns starboard
-        # Use velocity preference only if it agrees with COLREG or is marginal
-
-        # In crossing scenarios, COLREG requires starboard turn
         # But we can validate this is safe using closing speed
 
         if abs(closing_speed) < 0.5:
@@ -263,28 +249,22 @@ class COLREGLogic:
 
         Returns +1 for port (left) turn, -1 for starboard (right) turn.
         """
-        # Position vector (from target to own ship)
         dx = own_ship.state.x - target.state.x
         dy = own_ship.state.y - target.state.y
         d_magnitude = np.hypot(dx, dy)
 
-        # Velocity vectors
         vx_target = target.state.v * np.cos(target.state.psi)
         vy_target = target.state.v * np.sin(target.state.psi)
         vx_own = own_ship.state.v * np.cos(own_ship.state.psi)
         vy_own = own_ship.state.v * np.sin(own_ship.state.psi)
 
-        # Relative velocity (own ship w.r.t. target)
         dvx = vx_own - vx_target
         dvy = vy_own - vy_target
 
-        # Closing speed (negative = approaching)
         closing_speed = (dvx * dx + dvy * dy) / d_magnitude
 
-        # Cross product (indicates rotational direction)
         cross_product = dvx * dy - dvy * dx
 
-        # Decision logic
         CLOSING_SPEED_THRESHOLD = 0.5  # m/s
 
         # Edge case 1: Low closing speed (parallel/perpendicular courses)

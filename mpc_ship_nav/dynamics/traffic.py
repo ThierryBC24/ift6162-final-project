@@ -219,26 +219,22 @@ class GenerateTraffic:
             )
 
         while max_iter > 0:
-            # sample a target
+
             target_state = call[enc_type - 1](epsilon)
             speed = target_state.v
 
-            # check speed limit
             if speed > self.max_target_speed:
                 max_iter -= 1
                 continue
 
-            # check navigability if env is available
             if self.env is not None:
                 x, y = self.env.to_local(target_state.lat, target_state.lon)
                 if not self.env.is_navigable(x, y):   # avoid land/buffer
                     max_iter -= 1
                     continue
 
-            # passed all checks
             return enc_type, target_state
 
-        # failed to find valid target
         return -1, None
         
 

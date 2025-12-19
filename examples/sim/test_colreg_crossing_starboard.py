@@ -44,8 +44,6 @@ def main():
 
     collision_occurred, collision_time, min_dist = check_collisions(log)
 
-    # Generate plot and animation BEFORE checking for errors
-    # This allows visualization even when there's a collision
     if not args.no_plot:
         plot_results(env, log, route)
 

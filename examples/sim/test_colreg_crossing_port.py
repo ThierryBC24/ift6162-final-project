@@ -44,12 +44,8 @@ def main():
     log, _ = run_scenario(env, own_ship, [traffic_ship], controller, sim_cfg)
 
     collision_occurred, collision_time, min_dist = check_collisions(log)
-    if collision_occurred:
-        print(f"ERROR: Collision at t={collision_time:.1f}s, min_d={min_dist:.1f}m")
-        return 1
-    else:
-        print(f"OK: No collision, min_d={min_dist:.1f}m")
 
+    # Generate plot and animation BEFORE checking for errors
     if not args.no_plot:
         plot_results(env, log, route)
 
@@ -57,7 +53,13 @@ def main():
         out_path = Path(__file__).resolve().parent / "test_colreg_crossing_port.gif"
         save_animation(env, log, route, out_path)
 
-    return 0
+    # Check collision and return appropriate exit code
+    if collision_occurred:
+        print(f"ERROR: Collision at t={collision_time:.1f}s, min_d={min_dist:.1f}m")
+        return 1
+    else:
+        print(f"OK: No collision, min_d={min_dist:.1f}m")
+        return 0
 
 
 if __name__ == "__main__":
