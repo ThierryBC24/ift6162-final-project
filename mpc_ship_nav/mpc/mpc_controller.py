@@ -150,7 +150,8 @@ class SimplifiedMPCController(Controller):
 
         # If we are at the last waypoint, just go straight
         if self.route.is_finished():
-            return 0.0
+            # Return 0.0 yaw rate, index 0, and empty debug info to satisfy unpacking in engine.py
+            return ((0.0, 0), (np.array([]), np.array([])))
 
         # 2) Calculate bearing to waypoint (target heading)
         dx = wp_x - own.x
@@ -185,7 +186,7 @@ class SimplifiedMPCController(Controller):
             # fallback: choose u closest to 0 (maintain current heading as safest option)
             # This matches the paper's approach when no feasible trajectory exists
             idx = np.argmin(np.abs(u_candidates))
-            return ((float(u_candidates[idx]), idx), (feasible_mask, own_trajs))
+            return ((float(u_candidates[idx]), idx), (feasible_mask, own_trajs_vis))
 
         # 6) Select the best feasible candidate (with COLREG awareness)
         idx = self._select_best(
