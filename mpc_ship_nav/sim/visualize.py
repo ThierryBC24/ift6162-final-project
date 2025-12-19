@@ -31,6 +31,11 @@ def plot_trajectories(
     own_x = [s.x for s in log.own_states if s.x is not None]
     own_y = [s.y for s in log.own_states if s.y is not None]
     ax.plot(own_x, own_y, "-o", ms=2, label="own ship")
+    
+    # Add start and end points for own ship
+    if len(own_x) > 0:
+        ax.scatter(own_x[0], own_y[0], c="green", marker="o", s=100, zorder=5, label="start", edgecolors="black", linewidths=1)
+        ax.scatter(own_x[-1], own_y[-1], c="red", marker="s", s=100, zorder=5, label="end", edgecolors="black", linewidths=1)
 
     all_x = list(own_x)
     all_y = list(own_y)
@@ -44,6 +49,12 @@ def plot_trajectories(
                 if s.x is not None and s.y is not None:
                     xs.append(s.x); ys.append(s.y)
             ax.plot(xs, ys, "--", label=f"traffic {idx+1}")
+            
+            # Add start and end points for traffic ship (without labels to avoid duplicates)
+            if len(xs) > 0:
+                ax.scatter(xs[0], ys[0], c="green", marker="o", s=100, zorder=5, edgecolors="black", linewidths=1)
+                ax.scatter(xs[-1], ys[-1], c="red", marker="s", s=100, zorder=5, edgecolors="black", linewidths=1)
+            
             all_x.extend(xs); all_y.extend(ys)
 
     # --- bounds handling ---
