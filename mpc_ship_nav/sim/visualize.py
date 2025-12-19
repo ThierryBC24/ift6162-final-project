@@ -117,7 +117,7 @@ def animate_trajectories(
     # hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
     # hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
     # num_trajectories = len(hypothetical_trajectories[0])
-    mpc_trajs = NewSimulateTraj(log)
+    mpc_trajs = SimulateTraj(log)
     
     # Handle possible 0-traffic case
     n_traffic = len(log.traffic_states[0]) if log.traffic_states else 0
