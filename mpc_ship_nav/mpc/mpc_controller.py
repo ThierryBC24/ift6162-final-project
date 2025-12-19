@@ -75,6 +75,44 @@ class WaypointRoute:
     def is_finished(self) -> bool:
         return self.idx >= len(self.waypoints_xy) - 1
 
+class StaticControlSeqGenrator:
+    """Generates a set of static trajectories based max yaw rate, horizon and number of trajectories."""
+    
+    def __init__(self, max_yaw_rate: float=np.radians(20), horizon: int=20, num_trajectories: int=45, decay_factor: float=0.95):
+        """
+        Args:
+            max_yaw_rate (float, optional): the maximum yaw rate in radians per second. Defaults to np.radians(20).
+            horizon (int, optional): the number of time steps in the trajectory horizon. Defaults to 20.
+            num_trajectories (int, optional): the number of trajectories to generate. Defaults to 45.
+            decay_factor (float, optional): the factor by which the yaw rate decays at each time step. Defaults to 0.95.
+        """
+        self.max_yaw_rate = max_yaw_rate
+        self.horizon = horizon
+        self.num_trajectories = num_trajectories
+        self.decay_factor = decay_factor
+        self.control_sequences = self.generate_controls()
+        
+        
+    def generate_controls(self) -> np.ndarray[np.ndarray[np.float64]]:
+        initial_angles = np.linspace(-self.max_yaw_rate, self.max_yaw_rate, self.num_trajectories)
+        # Initialize the control matrix
+        controls = np.zeros((self.num_trajectories, self.horizon), dtype=np.float64)
+        print("Generating trajectories with control shape:")
+        print(controls.shape)
+
+        # 2. Compute the sequence for each trajectory
+        for i, start_angle in enumerate(initial_angles):
+            dtheta = start_angle
+
+            for h in range(self.horizon):
+                # Store current control
+                controls[i, h] = dtheta
+
+                # Apply decay for the next step (smoothing)
+                # This corresponds to: dtheta = dtheta * .95
+                dtheta *= self.decay_factor
+        return controls 
+
 
 class SimplifiedMPCController(Controller):
     """
@@ -85,20 +123,22 @@ class SimplifiedMPCController(Controller):
     - Apply only first control input (receding horizon).
     """
 
-    def __init__(self, dt: float, waypoints_xy: np.ndarray) -> None:
+    def __init__(self, dt: float, waypoints_xy: np.ndarray, vis_scale: int = 100) -> None:
         self.cfg = MPCConfig(dt=dt)
         self.route = WaypointRoute(
             waypoints_xy=np.asarray(waypoints_xy, dtype=float),
             transition_radius=self.cfg.collision_radius,
         )
-
+        self.control_sequences = StaticControlSeqGenrator(self.cfg.max_yaw_rate, self.cfg.horizon, self.cfg.n_candidates).control_sequences
+        self.u_candidates = self.control_sequences[:, 0]
+        self.vis_scale = vis_scale  # for trajectory visualization
     def compute_control(
         self,
         t: float,
         own_ship: Vessel,
         other_vessels: List[Vessel],
         env: ChartEnvironment,
-    ) -> float:
+    ) -> Tuple[Tuple[float, int], Tuple[np.ndarray, np.ndarray]]:
         own = own_ship.state  # VesselState
 
         # Ensure we have local coordinates
@@ -137,15 +177,15 @@ class SimplifiedMPCController(Controller):
         u_candidates = np.linspace(
             -self.cfg.max_yaw_rate, self.cfg.max_yaw_rate, self.cfg.n_candidates
         )
-        feasible_mask, own_trajs = self._simulate_and_filter(
-            own, u_candidates, dyn_trajs, static_xy=np.empty((0, 2))  # Empty static obstacles array
+        feasible_mask, own_trajs, own_trajs_vis = self._simulate_and_filter(
+            own, dyn_trajs
         )
 
         if not np.any(feasible_mask):
             # fallback: choose u closest to 0 (maintain current heading as safest option)
             # This matches the paper's approach when no feasible trajectory exists
             idx = np.argmin(np.abs(u_candidates))
-            return float(u_candidates[idx])
+            return ((float(u_candidates[idx]), idx), (feasible_mask, own_trajs))
 
         # 6) Select the best feasible candidate (with COLREG awareness)
         idx = self._select_best(
@@ -158,7 +198,7 @@ class SimplifiedMPCController(Controller):
             dyn_states=dyn_states,  # Pass dynamic states for COLREG detection
         )
 
-        return float(u_candidates[idx])
+        return (float(u_candidates[idx]), idx), (feasible_mask, own_trajs_vis)
 
     @staticmethod
     def _wrap_angle(a: float) -> float:
@@ -172,10 +212,8 @@ class SimplifiedMPCController(Controller):
     def _simulate_and_filter(
         self,
         own: VesselState,
-        u_candidates: np.ndarray,
         dyn_trajs: List[np.ndarray],
-        static_xy: np.ndarray,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Simulate own-ship trajectories for each yaw-rate candidate and
         return:
@@ -185,19 +223,31 @@ class SimplifiedMPCController(Controller):
         H = self.cfg.horizon
         dt = self.cfg.dt
         v = own.v
-
-        M = len(u_candidates)
-
+        M = self.cfg.n_candidates
+        
+        sequence_by_traj = self.control_sequences 
+        own_trajs_vis = np.zeros((M, H, 2), dtype=float)
         own_trajs = np.zeros((M, H, 2), dtype=float)
         feasible = np.ones(M, dtype=bool)
 
         for m in range(M):
-            u = u_candidates[m]
             px = own.x
             py = own.y
             psi = own.psi
-
+            px_vis = own.x
+            py_vis = own.y
+            psi_vis = own.psi
+            sequence = sequence_by_traj[m]
             for h in range(H):
+                u = sequence[h]
+                psi_vis = self._wrap_angle(psi_vis + u * dt)
+                px_vis += v * math.cos(psi_vis) * dt * self.vis_scale
+                py_vis += v * math.sin(psi_vis) * dt * self.vis_scale
+                own_trajs_vis[m, h, 0] = px_vis
+                own_trajs_vis[m, h, 1] = py_vis
+                
+            for h in range(H):
+                u = sequence[h]
                 psi = self._wrap_angle(psi + u * dt)
                 px += v * math.cos(psi) * dt
                 py += v * math.sin(psi) * dt
@@ -225,7 +275,7 @@ class SimplifiedMPCController(Controller):
                 #         feasible[m] = False
                 #         break
 
-        return feasible, own_trajs
+        return feasible, own_trajs, own_trajs_vis
 
     def _predict_dynamic(self, dyn_states: List[VesselState]) -> List[np.ndarray]:
         """Predict constant-velocity paths for dynamic obstacles over the horizon."""

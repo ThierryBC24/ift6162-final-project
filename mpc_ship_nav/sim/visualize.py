@@ -4,11 +4,9 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.patches import FancyArrowPatch 
 from typing import Optional, List, Tuple
-from mpc_ship_nav.charts.config import RegionConfig
 from mpc_ship_nav.charts.environment import ChartEnvironment
-from mpc_ship_nav.dynamics.traffic import TrafficGenerator
-from mpc_ship_nav.sim.engine import Simulator, SimConfig, SimLog
-from mpc_ship_nav.sim.sim_possible_traj import SimulateHypotheticalTraj
+from mpc_ship_nav.sim.engine import SimLog
+from mpc_ship_nav.sim.sim_possible_traj import SimulateTraj
 from mpc_ship_nav.charts.planner import Coord 
 
 
@@ -115,10 +113,11 @@ def animate_trajectories(
     n_frames = len(log.own_states)
     print(f"Animating {n_frames} frames at {fps} fps...")
 
-    own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log, dump_zone=300, scale=100)
-    hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
-    hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
-    num_trajectories = len(hypothetical_trajectories[0])
+    # own_hypothetical_trajectories = SimulateHypotheticalTraj(env, log, dump_zone=300, scale=100)
+    # hypothetical_trajectories = own_hypothetical_trajectories.simulate_all_trajectories()
+    # hypothetical_colors =  own_hypothetical_trajectories.color_all_trajectories_by_risk()
+    # num_trajectories = len(hypothetical_trajectories[0])
+    mpc_trajs = NewSimulateTraj(log)
     
     # Handle possible 0-traffic case
     n_traffic = len(log.traffic_states[0]) if log.traffic_states else 0
@@ -191,7 +190,7 @@ def animate_trajectories(
         traffic_heads.append(head)
 
     hypothetical_lines : List[plt.Line2D] = []
-    for traj_idx in range(num_trajectories):
+    for traj_idx in range(mpc_trajs.n_candidate):
         line, = ax.plot([], [], "-", color='red',zorder=5, alpha=0.3)
         hypothetical_lines.append(line)
     ax.legend(loc="upper right")
@@ -254,10 +253,15 @@ def animate_trajectories(
             traffic_lines[i].set_data(tx[max(0, frame - 5): frame + 1], ty[max(0, frame - 5): frame + 1])
             traffic_heads[i].set_data([tx[frame]], [ty[frame]])
         
-        trjectories = hypothetical_trajectories[frame]
-        for traj_idx in range(num_trajectories):
-            traj_x, traj_y = trjectories[traj_idx]
-            color = hypothetical_colors[frame][traj_idx]
+        trjectories = mpc_trajs.get_traj_per_snapshot(frame)
+        colors, u_armin = mpc_trajs.get_colors_per_snapshot(frame)
+        for traj_idx in range(mpc_trajs.n_candidate):
+            traj_x = trjectories[traj_idx][:, 0]
+            traj_y = trjectories[traj_idx][:, 1]
+            if traj_idx == u_armin:
+                color = "blue"
+            else:
+                color = "green" if colors[traj_idx] else "red"
             hypothetical_lines[traj_idx].set_data(traj_x, traj_y)
             hypothetical_lines[traj_idx].set_color(color)
 

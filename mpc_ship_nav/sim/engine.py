@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, replace
-from typing import List, Protocol, Optional
+from typing import List, Protocol, Optional, Tuple
 import numpy as np
 
 from ..charts.environment import ChartEnvironment
@@ -17,7 +17,7 @@ class Controller(Protocol):
         own_ship: Vessel,
         other_vessels: List[Vessel],
         env: ChartEnvironment,
-    ) -> float:
+    ) -> Tuple[Tuple[float, int], Tuple[np.ndarray[bool], np.ndarray[np.ndarray[np.ndarray[float, float]]]]]:
         """Return control input (e.g. yaw rate [rad/s]) at time t."""
         ...
 
@@ -35,6 +35,9 @@ class SimLog:
     own_states: List[VesselState] = field(default_factory=list)
     traffic_states: List[List[VesselState]] = field(default_factory=list)
     controls: List[float] = field(default_factory=list)
+    controls_idx: List[int] = field(default_factory=list)
+    masks_per_snapshot: List[np.ndarray[bool]] = field(default_factory=list)
+    trajs_per_snapshot: List[np.ndarray[np.ndarray[np.ndarray[float]]]] = field(default_factory=list)
 
 
 class Simulator:
@@ -78,6 +81,12 @@ class Simulator:
         for k in range(n_steps + 1):
             t = k * dt
 
+            #--- compute control for own ship ---
+            (u, u_argmin), (mask, trajs) = self.controller.compute_control(
+                t, self.own_ship, self.other_vessels, self.env
+            )
+            log.controls.append(u)
+
             # --- logging (store copies of states) ---
             if k % self.cfg.log_interval == 0:
                 log.times.append(t)
@@ -89,12 +98,9 @@ class Simulator:
                 log.traffic_states.append(
                     [replace(v.state) for v in self.other_vessels]
                 )
-
-            # --- compute control for own ship ---
-            u = self.controller.compute_control(
-                t, self.own_ship, self.other_vessels, self.env
-            )
-            log.controls.append(u)
+                log.controls_idx.append(u_argmin)
+                log.masks_per_snapshot.append(mask)
+                log.trajs_per_snapshot.append(trajs)
 
             # --- advance own ship ---
             self.own_ship.step(u, dt, chart_env=self.env)
