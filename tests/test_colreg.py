@@ -112,49 +112,56 @@ class TestCOLREGLogic:
         assert encounter == "overtaking"
 
     def test_target_must_give_way_crossing_starboard(self):
-        """Test COLREG crossing give-way logic."""
+        """Test COLREG crossing give-way logic - target on starboard must give way."""
         logic = COLREGLogic()
         
-        # Own ship heading East
+        # Own ship heading East (0°)
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship on starboard side, heading North
-        # The _target_must_give_way logic checks if target is in starboard sector
-        # (-112.5° < rel_bearing <= 0°). The actual behavior depends on the
-        # relative bearing calculation, which we test here.
+        # Target ship directly on starboard side (at -90° relative bearing)
+        # Position: (0, -1000) relative to own at (0, 0)
+        # Bearing from own to target: atan2(-1000, 0) = -π/2
+        # Relative bearing: -π/2 - 0 = -π/2 (in starboard sector)
         target_state = VesselState(
-            lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=2000.0, y=-2000.0
+            lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=0.0, y=-1000.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         encounter = logic._classify_encounter(target, own_ship)
+        assert encounter == "crossing"  # Should be classified as crossing
+        
         must_give_way = logic._target_must_give_way(encounter, target, own_ship)
         
-        # Just verify the method returns a boolean-like value (test the interface)
-        assert must_give_way in (True, False) or isinstance(must_give_way, (bool, np.bool_))
+        # Target is in starboard sector (-112.5° < rel_bearing <= 0°)
+        # -π/2 ≈ -90° is in this range, so target MUST give way
+        assert must_give_way == True
 
     def test_target_must_give_way_crossing_port(self):
-        """Test COLREG crossing give-way logic for port side."""
+        """Test COLREG crossing give-way logic - target on port does NOT give way."""
         logic = COLREGLogic()
         
-        # Own ship heading East
+        # Own ship heading East (0°)
         own_state = VesselState(lat=0.0, lon=0.0, psi=0.0, v=8.0, x=0.0, y=0.0)
         own_ship = Vessel(own_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
-        # Target ship on port side, heading North
-        # The _target_must_give_way logic checks if target is in starboard sector
-        # Port side targets should typically not give way
+        # Target ship directly on port side (at +90° relative bearing)
+        # Position: (0, 1000) relative to own at (0, 0)
+        # Bearing from own to target: atan2(1000, 0) = π/2
+        # Relative bearing: π/2 - 0 = π/2 (NOT in starboard sector)
         target_state = VesselState(
-            lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=2000.0, y=2000.0
+            lat=0.0, lon=0.0, psi=math.pi / 2, v=8.0, x=0.0, y=1000.0
         )
         target = Vessel(target_state, VesselParams(max_yaw_rate=math.radians(20.0)))
         
         encounter = logic._classify_encounter(target, own_ship)
+        assert encounter == "crossing"  # Should be classified as crossing
+        
         must_give_way = logic._target_must_give_way(encounter, target, own_ship)
         
-        # Just verify the method returns a boolean-like value (test the interface)
-        assert must_give_way in (True, False) or isinstance(must_give_way, (bool, np.bool_))
+        # Target is on port side (π/2 > 0°), NOT in starboard sector
+        # So target does NOT give way (own ship must give way)
+        assert must_give_way == False
 
     def test_compute_target_control_no_risk(self):
         """Test that target maintains course when no collision risk."""

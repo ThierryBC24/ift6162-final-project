@@ -99,12 +99,22 @@ class TestVesselDynamics:
         params = VesselParams(max_yaw_rate=math.radians(20.0))
         vessel = Vessel(state, params)
         
+        initial_psi = state.psi
         dt = 1.0
-        u = math.radians(15.0)  # Turn port
+        u = math.radians(15.0)  # Turn port (positive)
         vessel.step(u=u, dt=dt)
         
-        # Heading should wrap from near π to near -π
-        assert vessel.state.psi < 0.0 or abs(vessel.state.psi) <= math.pi
+        # Heading should wrap: (π - 0.1) + 15° = π - 0.1 + 0.262 = π + 0.162
+        # This should wrap to approximately -π + 0.162 = -2.98
+        expected_psi = initial_psi + u * dt
+        # Normalize using same method as implementation (arctan2)
+        expected_psi = np.arctan2(np.sin(expected_psi), np.cos(expected_psi))
+        
+        # Verify heading is in valid range and matches expected wrapped value
+        assert -math.pi <= vessel.state.psi <= math.pi, \
+            f"Heading {vessel.state.psi} should be in [-π, π]"
+        assert abs(vessel.state.psi - expected_psi) < 1e-6, \
+            f"Expected wrapped heading {expected_psi:.6f}, got {vessel.state.psi:.6f}"
 
     def test_step_multiple_steps(self):
         """Test vessel over multiple time steps."""
