@@ -173,7 +173,7 @@ class SimplifiedMPCController(Controller):
             -self.cfg.max_yaw_rate, self.cfg.max_yaw_rate, self.cfg.n_candidates
         )
         feasible_mask, own_trajs, own_trajs_vis = self._simulate_and_filter(
-            own, dyn_trajs
+            own, dyn_trajs, env
         )
 
         if not np.any(feasible_mask):
@@ -208,6 +208,7 @@ class SimplifiedMPCController(Controller):
         self,
         own: VesselState,
         dyn_trajs: List[np.ndarray],
+        env: ChartEnvironment,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Simulate own-ship trajectories for each yaw-rate candidate and
@@ -248,6 +249,11 @@ class SimplifiedMPCController(Controller):
                 py += v * math.sin(psi) * dt
                 own_trajs[m, h, 0] = px
                 own_trajs[m, h, 1] = py
+
+                # --- static obstacle check (land) ---
+                if not env.is_navigable(px, py):
+                    feasible[m] = False
+                    break
 
                 # --- dynamic collision check ---
                 for traj_other in dyn_trajs:
