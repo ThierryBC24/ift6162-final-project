@@ -153,6 +153,11 @@ ift6162-final-project/
 └── setup.py              # Package installation script
 ```
 
+## Benchmarks and Results
+
+The example folder contains multiple scripts to generate sandbox experiment (specific experiments for different collision scenarios) and more realistic experiments and scenario by using actual coordinates. To get an overview of our results refer to the the [Benchmarks and Results](./examples/benchmarks_and_experiments.md) file.
+
+
 ## Limitations
 
 - **Simplified environment**: The simulation does not account for complex factors such as weather conditions, partial observability, or vessel size and maneuverability differences
