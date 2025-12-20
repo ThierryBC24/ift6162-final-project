@@ -249,6 +249,10 @@ class SimplifiedMPCController(Controller):
                 py += v * math.sin(psi) * dt
                 own_trajs[m, h, 0] = px
                 own_trajs[m, h, 1] = py
+                
+                if not env.is_navigable(px, py):
+                    feasible[m] = False
+                    break
 
                 # --- static obstacle check (land) ---
                 if not env.is_navigable(px, py):

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, replace
 from typing import List, Protocol, Optional, Tuple
 import numpy as np
+import tqdm
 
 from ..charts.environment import ChartEnvironment
 from ..dynamics.traffic import Scenario
@@ -76,7 +77,7 @@ class Simulator:
         has_route = hasattr(self.controller, 'route')
         route = getattr(self.controller, 'route', None) if has_route else None
 
-        for k in range(n_steps + 1):
+        for k in tqdm.tqdm(range(n_steps + 1)):
             t = k * dt
 
             #--- compute control for own ship ---
